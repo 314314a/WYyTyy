@@ -1,1 +1,80 @@
+name: Build WYyTy Android APK
 
+on:
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-android-apk:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    steps:
+      - name: 1. Checkout Repository via Git
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git init
+          git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git fetch --depth=1 origin "${GITHUB_SHA}"
+          git checkout -f FETCH_HEAD
+
+      - name: 2. Prepare Web Assets and Capacitor Config
+        run: |
+          if [ ! -f index.html ]; then
+            for z in *.zip; do
+              if [ -f "$z" ]; then unzip -o "$z"; fi
+            done
+          fi
+          rm -rf www android
+          mkdir -p www
+          if [ -f index.html ]; then
+            cp index.html www/index.html
+          elif [ -f tcm_commission_tracker.html ]; then
+            cp tcm_commission_tracker.html www/index.html
+          fi
+          for f in styles.css app.js manifest.json sw.js icon-192.png icon-512.png; do
+            if [ -f "$f" ]; then cp "$f" www/; fi
+          done
+          echo '{"name":"wyyty","version":"1.0.0","private":true,"dependencies":{"@capacitor/android":"6.1.2","@capacitor/cli":"6.1.2","@capacitor/core":"6.1.2"}}' > package.json
+          echo '{"appId":"com.wyyty.app","appName":"WYyTy","webDir":"www","bundledWebRuntime":false}' > capacitor.config.json
+          ls -la www/
+
+      - name: 3. Install Capacitor and Generate Android Project
+        run: |
+          export JAVA_HOME="${JAVA_HOME_17_X64:-/usr/lib/jvm/temurin-17-jdk-amd64}"
+          export PATH="$JAVA_HOME/bin:$PATH"
+          npm install --no-audit --no-fund --fetch-timeout=60000
+          npx cap telemetry off || true
+          npx cap add android
+          npx cap sync android
+          sed -i 's/networkTimeout=10000/networkTimeout=60000/g' android/gradle/wrapper/gradle-wrapper.properties || true
+          sed -i 's|</manifest>|<uses-permission android:name="android.permission.CAMERA" /><uses-feature android:name="android.hardware.camera" android:required="false" /></manifest>|' android/app/src/main/AndroidManifest.xml
+
+      - name: 4. Build APK with Gradle
+        working-directory: ./android
+        run: |
+          export JAVA_HOME="${JAVA_HOME_17_X64:-/usr/lib/jvm/temurin-17-jdk-amd64}"
+          export PATH="$JAVA_HOME/bin:$PATH"
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon --stacktrace
+          cp app/build/outputs/apk/debug/app-debug.apk ../WYyTy.apk
+          ls -lh ../WYyTy.apk
+
+      - name: 5. Save WYyTy APK to Repository and Releases
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "v1.0.${GITHUB_RUN_NUMBER}" WYyTy.apk --title "WYyTy Android APK (v1.0.${GITHUB_RUN_NUMBER})" --notes "點擊下方 WYyTy.apk 即可直接下載到 Android 手機安裝並離線使用。" || true
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -B "${GITHUB_REF_NAME}"
+          git add -f WYyTy.apk
+          git commit -m "Auto-build WYyTy Android APK [skip ci]" || true
+          git push origin "${GITHUB_REF_NAME}" || true
