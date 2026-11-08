@@ -68,20 +68,29 @@
         const pwdInput = document.getElementById('lockPasswordInput');
         const errEl = document.getElementById('lockErrorMsg');
         const val = (pwdInput ? pwdInput.value : '').trim();
+        const expected = String(securityConfig.password || '66668888').trim();
 
-        if (val === securityConfig.password) {
+        if (val === expected) {
           isAppUnlocked = true;
           if (errEl) errEl.textContent = '';
+          const lockEl = document.getElementById('wyytyLockScreen');
+          if (lockEl) {
+            lockEl.style.display = 'none';
+            lockEl.classList.add('unlocked');
+          }
           applyLockScreenState();
           showToast('🌿 歡迎使用 WYyTy！');
         } else {
-          if (errEl) errEl.textContent = '❌ 密碼錯誤，請重新輸入！';
+          if (errEl) {
+            errEl.textContent = val ? '❌ 密碼錯誤，請重新輸入！' : '⚠️ 請先輸入密碼！';
+          }
           if (pwdInput) {
             pwdInput.value = '';
             pwdInput.focus();
           }
         }
       }
+      window.unlockWYyTyApp = unlockApp;
 
       const RATES_STORAGE_KEY = 'tcm_custom_rates_v2';
 
@@ -498,7 +507,7 @@
               id: 'ref_' + o.id,
               type: 'full',
               amount: o.amount,
-              reason: o.refundReason || '客人親身退款',
+              reason: o.refundReason || '現退',
               note: o.refundNote || '',
               refundedAt: o.refundedAt || o.createdAt
             });
@@ -594,7 +603,7 @@
                 id: 'ref_sample_p1',
                 type: 'partial',
                 amount: 700,
-                reason: '客人聯絡客服退款',
+                reason: '網退',
                 note: '退回其中一盒藥材',
                 refundedAt: `${y}-${m}-05T16:00:00`
               }
@@ -655,7 +664,7 @@
                 id: 'ref_sample_f1',
                 type: 'full',
                 amount: 1200,
-                reason: '客人親身退款',
+                reason: '現退',
                 note: '',
                 refundedAt: `${y}-${m}-05T11:00:00`
               }
@@ -703,7 +712,7 @@
                 id: 'ref_sample_f2',
                 type: 'full',
                 amount: 1500,
-                reason: '客人聯絡客服退款',
+                reason: '網退',
                 note: '',
                 refundedAt: `${prevY}-${prevM}-26T10:00:00`
               }
@@ -765,9 +774,28 @@
         
         // Lock screen events
         const lockForm = document.getElementById('lockScreenForm');
-        if (lockForm) lockForm.addEventListener('submit', unlockApp);
+        if (lockForm) {
+          lockForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            unlockApp();
+          });
+        }
         const unlockBtn = document.getElementById('btnUnlockApp');
-        if (unlockBtn) unlockBtn.addEventListener('click', unlockApp);
+        if (unlockBtn) {
+          unlockBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            unlockApp();
+          });
+        }
+        const pwdInput = document.getElementById('lockPasswordInput');
+        if (pwdInput) {
+          pwdInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              unlockApp();
+            }
+          });
+        }
 
         // Password settings toggle & save
         const chkPwd = document.getElementById('chkEnablePassword');
@@ -782,29 +810,53 @@
 
         const btnSavePwd = document.getElementById('btnSaveNewPassword');
         if (btnSavePwd) {
-          btnSavePwd.addEventListener('click', () => {
-            const cur = (document.getElementById('inputCurrentPassword').value || '').trim();
-            const n1 = (document.getElementById('inputNewPassword').value || '').trim();
-            const n2 = (document.getElementById('inputConfirmPassword').value || '').trim();
+          btnSavePwd.addEventListener('click', (e) => {
+            e.preventDefault();
+            loadSecurityConfig();
+            const curInput = document.getElementById('inputCurrentPassword');
+            const n1Input = document.getElementById('inputNewPassword');
+            const n2Input = document.getElementById('inputConfirmPassword');
 
-            if (cur !== securityConfig.password) {
-              showToast('❌ 目前密碼輸入不正確！');
+            const cur = (curInput ? curInput.value : '').trim();
+            const n1 = (n1Input ? n1Input.value : '').trim();
+            const n2 = (n2Input ? n2Input.value : '').trim();
+            const expected = String(securityConfig.password || '66668888').trim();
+
+            if (!cur) {
+              showToast('⚠️ 請先輸入目前密碼！');
+              if (curInput) curInput.focus();
               return;
             }
-            if (n1.length < 4) {
-              showToast('⚠️ 新密碼至少需要 4 位字符！');
+            if (cur !== expected) {
+              showToast('❌ 目前密碼不正確！');
+              if (curInput) { curInput.value = ''; curInput.focus(); }
+              return;
+            }
+            if (!n1 || n1.length < 4) {
+              showToast('⚠️ 新密碼至少需要 4 位數字或字符！');
+              if (n1Input) n1Input.focus();
               return;
             }
             if (n1 !== n2) {
               showToast('⚠️ 兩次輸入的新密碼不一致！');
+              if (n2Input) n2Input.focus();
               return;
             }
+
             securityConfig.password = n1;
+            securityConfig.enabled = true;
             saveSecurityConfig();
-            document.getElementById('inputCurrentPassword').value = '';
-            document.getElementById('inputNewPassword').value = '';
-            document.getElementById('inputConfirmPassword').value = '';
-            showToast('✅ 密碼修改成功！新密碼已即時生效');
+
+            if (curInput) curInput.value = '';
+            if (n1Input) n1Input.value = '';
+            if (n2Input) n2Input.value = '';
+
+            const chkPwd = document.getElementById('chkEnablePassword');
+            if (chkPwd) chkPwd.checked = true;
+            const labelStatus = document.getElementById('labelPasswordStatus');
+            if (labelStatus) labelStatus.textContent = '已開啟密碼保護';
+
+            showToast(`✅ 密碼修改成功！新密碼已設定為：${n1}`);
           });
         }
 
@@ -1492,7 +1544,7 @@
         if (!ord) return;
 
         const selectedRadio = document.querySelector('input[name="refundReasonRadio"]:checked');
-        const reasonVal = selectedRadio ? selectedRadio.value : '客人親身退款';
+        const reasonVal = selectedRadio ? selectedRadio.value : '現退';
         const customText = document.getElementById('customRefundReasonInput').value.trim();
 
         if (reasonVal === '其他原因' && !customText) {
@@ -1773,8 +1825,16 @@
         // 5. Refund Amount & Reason Analysis
         renderRefundAnalysis(scopedRefundEvents, totalRefundAmt);
 
-        // 6. Annual Summary Table
-        renderYearlySummaryTable();
+        // 6. Annual Summary Table (只在整年總分析中顯示)
+        const yearlyWrap = document.getElementById('yearlySummaryCardWrap');
+        if (yearlyWrap) {
+          if (anaScope === 'full-year') {
+            yearlyWrap.style.display = 'block';
+            renderYearlySummaryTable();
+          } else {
+            yearlyWrap.style.display = 'none';
+          }
+        }
       }
 
       function renderMonthlyBreakdownTable(scopedOrders) {
@@ -1899,10 +1959,10 @@
 
       function renderRefundAnalysis(refundEvents, totalRefundAmt) {
         const standardReasons = [
-          '客人親身退款',
-          '客人聯絡客服退款',
-          '消委會介入',
-          '海關介入',
+          '現退',
+          '網退',
+          'X退',
+          'H退',
           '其他原因'
         ];
 

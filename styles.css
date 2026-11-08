@@ -326,8 +326,7 @@
 
     /* Quick Entry Row: Amount + Beside Tier Selector */
     .quick-entry-row {
-      display: grid;
-      grid-template-columns: 1.1fr 1.4fr;
+      display: block;
       gap: 12px;
       align-items: start;
     }

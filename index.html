@@ -26,14 +26,12 @@
       <div style="font-size:0.9rem; font-weight:600; margin-bottom:12px; color:rgba(255,255,255,0.9);">
         🔒 請輸入存取密碼
       </div>
-      <form id="lockScreenForm" onsubmit="return false;">
-        <input type="password" id="lockPasswordInput" class="lock-input" placeholder="••••••••" autocomplete="current-password" inputmode="numeric" />
-        <button type="submit" id="btnUnlockApp" class="lock-btn">解鎖進入 WYyTy</button>
+      <form id="lockScreenForm" onsubmit="event.preventDefault(); window.unlockWYyTyApp && window.unlockWYyTyApp(); return false;">
+        <input type="password" id="lockPasswordInput" class="lock-input" placeholder="請輸入密碼" autocomplete="current-password" inputmode="numeric" autofocus />
+        <button type="button" id="btnUnlockApp" class="lock-btn" onclick="window.unlockWYyTyApp && window.unlockWYyTyApp()">解鎖進入 WYyTy</button>
       </form>
       <div id="lockErrorMsg" class="lock-error-text"></div>
-      <div style="font-size:0.75rem; color:rgba(255,255,255,0.6); margin-top:8px;">
-        預設密碼：66668888（可在設定更改或關閉）
-      </div>
+
     </div>
   </div>
 
@@ -136,10 +134,10 @@
             <div class="form-group">
               <label class="form-label" for="singleAmountInput">開單金額 ($ HKD)</label>
               <input type="number" id="singleAmountInput" class="input-text" placeholder="請輸入開單金額，例如 1280" min="0" step="0.01" />
-              <div class="form-hint">輸入金額後，在旁邊點選 1仔、2仔 或 3仔 即可自動計算佣金</div>
+              <div class="form-hint">可直接在下方 1仔、2仔、3仔 或 其他 專屬輸入欄填寫開單金額及設定佣金</div>
             </div>
 
-            <div class="form-group">
+            <div class="form-group" style="display:none !important;">
               <label class="form-label">選擇佣金級別（旁邊點選）</label>
               <div class="tier-selector-group" id="singleTierSelector">
                 <button type="button" class="tier-option-btn active" data-tier="1">
@@ -527,16 +525,16 @@
         <!-- 開單日子次數的分析 -->
         <div class="card">
           <div class="card-header">
-            <div class="card-title">📆 開單日子次數及星期分佈分析</div>
+            <div class="card-title">📆 星期分佈分析</div>
           </div>
-          <div class="grid-3" id="dayFreqKpis" style="margin-bottom:12px;"></div>
+          <div class="grid-3" id="dayFreqKpis" style="display:none !important;"></div>
           <div style="font-size:0.84rem; font-weight:700; margin-bottom:8px; color:var(--primary);">星期一至星期日開單次數及金額分佈：</div>
           <div id="weekdayDistributionChart"></div>
         </div>
       </div>
 
-      <!-- 每月 1仔、2仔、3仔 分別、總佣金、每月平均開單金額、開單日數明細表 -->
-      <div class="card">
+      <!-- 每月 1仔、2仔、3仔 分別、總佣金、每月平均開單金額、開單日數明細表 (已依要求刪除隱藏) -->
+      <div class="card" style="display:none !important;">
         <div class="card-header">
           <div class="card-title">📈 每月 1仔 / 2仔 / 3仔 明細、總佣金及每月平均開單金額</div>
         </div>
@@ -565,7 +563,7 @@
       <div class="grid-2">
         <div class="card">
           <div class="card-header">
-            <div class="card-title">⏰ 開單時間分析（時段及小時分佈）</div>
+            <div class="card-title">⏰ 開單時間分析（時段及24小時分佈）</div>
           </div>
           <div id="timePeriodSummary" style="margin-bottom:14px;"></div>
           <div style="font-size:0.84rem; font-weight:700; margin-bottom:8px; color:var(--primary);">24小時開單活躍度分佈（按開單時間）：</div>
@@ -594,8 +592,8 @@
         </div>
       </div>
 
-      <!-- 每年的總分析 (Annual Summary across Years) -->
-      <div class="card">
+      <!-- 每年的總分析 (只在整年總分析項目裏顯示) -->
+      <div class="card" id="yearlySummaryCardWrap" style="display:none;">
         <div class="card-header">
           <div class="card-title">🏆 每年的總分析（年度匯總對比）</div>
         </div>
@@ -907,21 +905,21 @@
 
             <div style="font-weight:700; color:var(--danger); font-size:0.88rem; margin-bottom:6px;">2. 請選擇退款原因：</div>
             <div class="reason-list" id="refundReasonOptions">
-              <label class="reason-option selected" data-reason="客人親身退款">
-                <input type="radio" name="refundReasonRadio" value="客人親身退款" checked />
-                <span>1. 客人親身退款</span>
+              <label class="reason-option selected" data-reason="現退">
+                <input type="radio" name="refundReasonRadio" value="現退" checked />
+                <span>1. 現退</span>
               </label>
-              <label class="reason-option" data-reason="客人聯絡客服退款">
-                <input type="radio" name="refundReasonRadio" value="客人聯絡客服退款" />
-                <span>2. 客人聯絡客服退款</span>
+              <label class="reason-option" data-reason="網退">
+                <input type="radio" name="refundReasonRadio" value="網退" />
+                <span>2. 網退</span>
               </label>
-              <label class="reason-option" data-reason="消委會介入">
-                <input type="radio" name="refundReasonRadio" value="消委會介入" />
-                <span>3. 消委會介入</span>
+              <label class="reason-option" data-reason="X退">
+                <input type="radio" name="refundReasonRadio" value="X退" />
+                <span>3. X退</span>
               </label>
-              <label class="reason-option" data-reason="海關介入">
-                <input type="radio" name="refundReasonRadio" value="海關介入" />
-                <span>4. 海關介入</span>
+              <label class="reason-option" data-reason="H退">
+                <input type="radio" name="refundReasonRadio" value="H退" />
+                <span>4. H退</span>
               </label>
               <label class="reason-option" data-reason="其他原因">
                 <input type="radio" name="refundReasonRadio" value="其他原因" />
