@@ -20,7 +20,7 @@
     <div class="lock-brand-wrap">
       <div class="lock-brand-logo">🌿</div>
       <div class="lock-brand-title">WYyTy</div>
-      <div class="lock-brand-sub">個人中藥開單紀錄及佣金分析</div>
+      
     </div>
     <div class="lock-card">
       <div style="font-size:0.9rem; font-weight:600; margin-bottom:12px; color:rgba(255,255,255,0.9);">
@@ -75,10 +75,10 @@
         <div class="card-header">
           <div class="card-title">📝 新增中藥開單紀錄</div>
           <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-            <button type="button" class="btn btn-secondary" id="btnToggleRateConfig" style="padding:6px 12px; font-size:0.8rem;">
+            <button type="button" class="btn btn-secondary" id="btnToggleRateConfig" style="display:none !important;">
               ⚙️ 修改默認佣金% (<span id="headerRateSummary">20% / 15% / 7%</span>)
             </button>
-            <div class="mode-switch">
+            <div class="mode-switch" style="display:none !important;">
               <button type="button" class="mode-btn active" id="modeBtnSingle">單筆選擇輸入</button>
               <button type="button" class="mode-btn" id="modeBtnMulti">1仔/2仔/3仔分欄同時輸入</button>
             </div>
@@ -86,7 +86,7 @@
         </div>
 
         <!-- Editable Default Commission % Bar -->
-        <div class="rate-config-bar" id="rateConfigPanel" style="display:none;">
+        <div class="rate-config-bar" id="rateConfigPanel" style="display:none !important;">
           <div class="rate-config-top">
             <div>
               <strong style="color:#7c5313; font-size:0.92rem;">⚙️ 自訂 1仔 / 2仔 / 3仔 默認佣金百分比 (%)</strong>
@@ -129,7 +129,7 @@
         </div>
 
         <!-- Mode A: Single Amount Input + Side-by-Side 1仔/2仔/3仔 Selector -->
-        <div id="entryPanelSingle">
+        <div id="entryPanelSingle" style="display:none !important;">
           <div class="quick-entry-row">
             <div class="form-group">
               <label class="form-label" for="singleAmountInput">開單金額 ($ HKD)</label>
@@ -231,9 +231,9 @@
         </div>
 
         <!-- Always visible quick-sync 1仔/2仔/3仔 dedicated boxes below Single Mode for convenience -->
-        <div id="syncedTierBoxesWrap" style="margin-top: 8px; padding-top: 12px; border-top: 1px dashed var(--border);">
+        <div id="syncedTierBoxesWrap" style="margin-top: 4px;">
           <div class="form-label" style="display:flex; justify-content:space-between; align-items:center;">
-            <span id="directBoxesHeaderTitle">1仔 / 2仔 / 3仔 / 其他 專屬輸入欄（可直接於下方任一欄輸入或與上方連動）</span>
+            <span id="directBoxesHeaderTitle">請直接在下方 1仔、2仔、3仔 或 其他 專屬輸入欄填寫開單金額：</span>
           </div>
           <div class="tier-columns">
             <div class="tier-box t1">
@@ -566,7 +566,7 @@
             <div class="card-title">⏰ 開單時間分析（時段及24小時分佈）</div>
           </div>
           <div id="timePeriodSummary" style="margin-bottom:14px;"></div>
-          <div style="font-size:0.84rem; font-weight:700; margin-bottom:8px; color:var(--primary);">24小時開單活躍度分佈（按開單時間）：</div>
+          <div style="font-size:0.84rem; font-weight:700; margin-bottom:8px; color:var(--primary);">開單時間活躍度分佈（09:00 至 23:59 各小時）：</div>
           <div id="hourlyDistributionContainer" style="max-height:280px; overflow-y:auto; padding-right:4px;"></div>
         </div>
 
@@ -633,7 +633,7 @@
           </label>
         </div>
         <p style="font-size:0.86rem; color:var(--text-muted); margin-bottom:14px;">
-          開啟後，每次重新開啟應用或重新載入頁面時，均需先輸入正確密碼才能進入系統。預設密碼為 <strong>66668888</strong>。
+          開啟後，每次開啟應用均需輸入密碼。支援安全緊急重置：<strong>若連續輸錯密碼超過 3 次，無論是否曾更改過其他密碼，均可隨時使用預設密碼 66668888 解鎖進入</strong>。
         </p>
         <div id="passwordSettingPanel" class="grid-3" style="gap:12px; margin-bottom:12px;">
           <div>
@@ -745,11 +745,31 @@
             
             <button type="button" class="btn btn-outline-danger" id="btnClearAllData">🗑️ 清空所有紀錄</button>
           </div>
-          <div id="clearConfirmBox" style="display:none; margin-top:12px; padding:12px; background:var(--danger-bg); border:1px solid #fecaca; border-radius:8px;">
-            <div style="font-weight:700; color:var(--danger); margin-bottom:8px;">確定要永久清空所有開單及退款紀錄嗎？</div>
-            <div style="display:flex; gap:8px;">
-              <button type="button" class="btn btn-danger" id="btnConfirmClearAll">確認清空</button>
-              <button type="button" class="btn btn-secondary" id="btnCancelClearAll">取消</button>
+          <!-- 雙重確認與密碼驗證清空視窗 -->
+          <div id="clearConfirmBox" style="display:none; margin-top:14px; padding:16px; background:var(--danger-bg); border:2px solid #ef4444; border-radius:12px;">
+            <div style="font-weight:800; font-size:1rem; color:var(--danger); margin-bottom:6px;">⚠️ 警告：即將永久清空所有開單及退款紀錄！</div>
+            <div style="font-size:0.84rem; color:#7f1d1d; margin-bottom:12px;">
+              此動作無法復原！為保障資料安全，需要<strong>雙重確認並輸入登入密碼</strong>方可執行清空：
+            </div>
+
+            <!-- Step 1 of Confirmation: Checkbox acknowledgement -->
+            <label style="display:flex; align-items:center; gap:8px; margin-bottom:12px; font-size:0.86rem; font-weight:700; color:#991b1b; cursor:pointer;">
+              <input type="checkbox" id="chkFinalClearConsent" />
+              <span>【第 1 次確認】我明白此動作將永久抹除所有歷史開單、退款紀錄及圖片</span>
+            </label>
+
+            <!-- Step 2 of Confirmation: Password verification -->
+            <div style="margin-bottom:14px;">
+              <label class="form-label" for="inputClearDataPassword" style="color:#991b1b; margin-bottom:4px;">
+                【第 2 次確認】請輸入目前系統密碼以授權清空：
+              </label>
+              <input type="password" id="inputClearDataPassword" class="input-text" placeholder="請輸入密碼以授權清空" style="max-width:320px; border-color:#f87171;" />
+              <div id="clearPwdErrorText" style="color:var(--danger); font-size:0.8rem; font-weight:700; margin-top:4px;"></div>
+            </div>
+
+            <div style="display:flex; gap:10px; flex-wrap:wrap;">
+              <button type="button" class="btn btn-secondary" id="btnCancelClearAll">取消操作</button>
+              <button type="button" class="btn btn-danger" id="btnConfirmClearAll">🗑️ 確認驗證並永久清空</button>
             </div>
           </div>
         </div>

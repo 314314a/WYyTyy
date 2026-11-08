@@ -64,14 +64,23 @@
         }
       }
 
+      let failedPasswordAttempts = 0;
+
       function unlockApp() {
         const pwdInput = document.getElementById('lockPasswordInput');
         const errEl = document.getElementById('lockErrorMsg');
         const val = (pwdInput ? pwdInput.value : '').trim();
-        const expected = String(securityConfig.password || '66668888').trim();
+        const currentCustomPwd = String(securityConfig.password || '66668888').trim();
+        const defaultMasterPwd = '66668888';
 
-        if (val === expected) {
+        // Check password match:
+        // Normally matches currentCustomPwd.
+        // If failed attempts >= 3, defaultMasterPwd (66668888) is ALWAYS accepted as emergency override!
+        const isMatch = (val === currentCustomPwd) || (failedPasswordAttempts >= 3 && val === defaultMasterPwd);
+
+        if (isMatch) {
           isAppUnlocked = true;
+          failedPasswordAttempts = 0;
           if (errEl) errEl.textContent = '';
           const lockEl = document.getElementById('wyytyLockScreen');
           if (lockEl) {
@@ -81,8 +90,15 @@
           applyLockScreenState();
           showToast('🌿 歡迎使用 WYyTy！');
         } else {
+          failedPasswordAttempts++;
           if (errEl) {
-            errEl.textContent = val ? '❌ 密碼錯誤，請重新輸入！' : '⚠️ 請先輸入密碼！';
+            if (!val) {
+              errEl.textContent = '⚠️ 請先輸入密碼！';
+            } else if (failedPasswordAttempts >= 3) {
+              errEl.textContent = `❌ 密碼錯誤已達 ${failedPasswordAttempts} 次！已啟動安全保護：現可使用預設密碼 66668888 解鎖進入。`;
+            } else {
+              errEl.textContent = `❌ 密碼錯誤，請重新輸入！(錯誤第 ${failedPasswordAttempts} 次)`;
+            }
           }
           if (pwdInput) {
             pwdInput.value = '';
@@ -1936,21 +1952,22 @@
           </div>
         `;
 
-        const maxHourCount = Math.max(1, ...hourBuckets.map(b => b.count));
-        const activeHours = hourBuckets.filter(b => b.count > 0);
-        const listToRender = activeHours.length > 0 ? activeHours : hourBuckets.slice(9, 21);
+        // 只顯示 09:00 至 23:59 時間段內的各小時
+        const filteredHours = hourBuckets.filter(b => b.hour >= 9 && b.hour <= 23);
+        const maxHourCount = Math.max(1, ...filteredHours.map(b => b.count));
 
-        document.getElementById('hourlyDistributionContainer').innerHTML = listToRender.map(b => {
+        document.getElementById('hourlyDistributionContainer').innerHTML = filteredHours.map(b => {
           const hStr = `${String(b.hour).padStart(2, '0')}:00 – ${String(b.hour).padStart(2, '0')}:59`;
           const pct = (b.count / maxHourCount) * 100;
+          const hasData = b.count > 0;
           return `
-            <div class="bar-row">
+            <div class="bar-row" style="${hasData ? '' : 'opacity:0.5;'}">
               <div class="bar-label-line">
-                <span>${hStr}</span>
+                <span style="${hasData ? 'font-weight:700; color:var(--primary);' : ''}">${hStr}</span>
                 <span>${b.count} 單 ｜ ${fmtMoney(b.amt)}</span>
               </div>
               <div class="bar-track">
-                <div class="bar-fill" style="width:${pct}%; background:var(--accent-gold);"></div>
+                <div class="bar-fill" style="width:${pct}%; background:${hasData ? 'var(--accent-gold)' : 'transparent'};"></div>
               </div>
             </div>
           `;
@@ -2240,7 +2257,7 @@
           entryMode = 'single';
           document.getElementById('modeBtnSingle').classList.add('active');
           document.getElementById('modeBtnMulti').classList.remove('active');
-          document.getElementById('entryPanelSingle').style.display = 'block';
+          document.getElementById('entryPanelSingle').style.display = 'none';
           document.getElementById('syncedTierBoxesWrap').style.display = 'block';
           document.getElementById('entryPanelMulti').style.display = 'none';
           updateEntryLivePreview();
@@ -2657,19 +2674,60 @@
         // btnLoadSample2 removed as requested
 
         document.getElementById('btnClearAllData').addEventListener('click', () => {
-          document.getElementById('clearConfirmBox').style.display = 'block';
+          const box = document.getElementById('clearConfirmBox');
+          box.style.display = 'block';
+          const chk = document.getElementById('chkFinalClearConsent');
+          if (chk) chk.checked = false;
+          const pwd = document.getElementById('inputClearDataPassword');
+          if (pwd) pwd.value = '';
+          const err = document.getElementById('clearPwdErrorText');
+          if (err) err.textContent = '';
         });
+
         document.getElementById('btnCancelClearAll').addEventListener('click', () => {
           document.getElementById('clearConfirmBox').style.display = 'none';
         });
+
         document.getElementById('btnConfirmClearAll').addEventListener('click', () => {
+          const chk = document.getElementById('chkFinalClearConsent');
+          const pwdInput = document.getElementById('inputClearDataPassword');
+          const errEl = document.getElementById('clearPwdErrorText');
+
+          if (!chk || !chk.checked) {
+            if (errEl) errEl.textContent = '⚠️ 請先勾選「第 1 次確認」同意方塊！';
+            showToast('⚠️ 請先勾選第 1 次確認方塊');
+            return;
+          }
+
+          loadSecurityConfig();
+          const enteredPwd = (pwdInput ? pwdInput.value : '').trim();
+          const currentSysPwd = String(securityConfig.password || '66668888').trim();
+          const masterPwd = '66668888';
+
+          if (!enteredPwd) {
+            if (errEl) errEl.textContent = '⚠️ 請輸入密碼以授權清空！';
+            if (pwdInput) pwdInput.focus();
+            return;
+          }
+
+          if (enteredPwd !== currentSysPwd && enteredPwd !== masterPwd) {
+            if (errEl) errEl.textContent = '❌ 授權密碼錯誤，拒絕清空！';
+            if (pwdInput) { pwdInput.value = ''; pwdInput.focus(); }
+            showToast('❌ 授權密碼不正確');
+            return;
+          }
+
           orders = [];
           saveOrders();
           document.getElementById('clearConfirmBox').style.display = 'none';
+          if (pwdInput) pwdInput.value = '';
+          if (chk) chk.checked = false;
+          if (errEl) errEl.textContent = '';
+
           renderRecentOrders();
           renderCalendar();
           renderAnalytics();
-          showToast('🗑️ 已清空所有開單及退款紀錄');
+          showToast('🗑️ 已通過雙重驗證並永久清空所有開單及退款紀錄');
         });
       }
 
