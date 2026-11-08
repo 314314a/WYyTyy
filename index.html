@@ -633,7 +633,7 @@
           </label>
         </div>
         <p style="font-size:0.86rem; color:var(--text-muted); margin-bottom:14px;">
-          開啟後，每次開啟應用均需輸入密碼。支援安全緊急重置：<strong>若連續輸錯密碼超過 3 次，無論是否曾更改過其他密碼，均可隨時使用預設密碼 66668888 解鎖進入</strong>。
+          開啟後，每次開啟應用均需輸入密碼。支援安全緊急保護：<strong>若連續輸錯密碼達 3 次或以上，無論是否曾更改過其他密碼，均可輸入預設密碼解鎖進入</strong>。
         </p>
         <div id="passwordSettingPanel" class="grid-3" style="gap:12px; margin-bottom:12px;">
           <div>
@@ -649,6 +649,7 @@
             <input type="password" id="inputConfirmPassword" class="input-text" placeholder="再次輸入新密碼" />
           </div>
         </div>
+        <div id="pwdInlineFeedback" style="display:none; padding:10px 12px; border-radius:8px; font-size:0.85rem; font-weight:700; margin-bottom:12px;"></div>
         <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
           <button type="button" class="btn btn-secondary" id="btnLockAppNow">🔒 立即鎖定畫面</button>
           <button type="button" class="btn btn-primary" id="btnSaveNewPassword">💾 儲存密碼設定</button>
@@ -695,7 +696,7 @@
             <div class="card-title">💾 離線數據備份與還原</div>
           </div>
           <p style="font-size:0.88rem; color:var(--text-muted); margin-bottom:14px;">
-            所有開單、退款紀錄及自訂佣金設置均自動保存在您的瀏覽器本地儲存空間（LocalStorage），無需連網即可使用。
+            所有開單、退款紀錄及自訂佣金設置均保存在本機。匯出時會<strong>調用系統檔案權限，讓您自行挑選資料夾儲存</strong>；匯入時亦可直接挑選資料夾內的備份檔。
           </p>
           <div style="display:flex; flex-wrap:wrap; gap:10px; margin-bottom:12px;">
             <button type="button" class="btn btn-primary" id="btnExportJson">⬇️ 匯出 JSON 完整備份</button>
@@ -711,7 +712,7 @@
               <strong id="exportInspectorTitle" style="color:var(--primary); font-size:0.9rem;">📄 實質匯出內容預覽</strong>
               <div style="display:flex; gap:6px; flex-wrap:wrap;">
                 <button type="button" class="btn btn-primary" id="btnCopyExportText" style="padding:6px 12px; font-size:0.78rem;">📋 一鍵複製匯出內容</button>
-                <button type="button" class="btn btn-warn" id="btnNativeShareExport" style="padding:6px 12px; font-size:0.78rem;">📲 手機系統分享/另存</button>
+                
                 <a id="directDownloadLink" href="#exportInspectorPanel" download="backup.json" class="btn btn-secondary" style="padding:6px 12px; font-size:0.78rem; text-decoration:none;">💾 點此直接另存檔案</a>
                 <button type="button" class="btn btn-secondary" id="btnFillImportFromExport" style="padding:6px 12px; font-size:0.78rem;">⤵️ 填入下方還原區測試</button>
               </div>
@@ -720,17 +721,39 @@
             <div id="csvPreviewTableWrap" class="table-wrap" style="display:none; margin-top:10px; max-height:220px; overflow-y:auto;"></div>
           </div>
 
-          <div class="form-group" style="padding-top:14px; margin-top:14px; border-top:1px solid var(--border);">
-            <label class="form-label" for="importJsonFile">⬆️ 方法一：選擇本地 JSON 備份檔案還原</label>
-            <input type="file" id="importJsonFile" accept=".json" class="input-text" />
+          <!-- 匯入／還原狀態即時確認橫幅 -->
+          <div id="importStatusBanner" style="display:none; margin-top:12px; padding:12px 14px; border-radius:10px; font-size:0.88rem; font-weight:700;"></div>
+
+          <!-- 內建本機備份庫（點擊上方「匯出 JSON」時會自動在此保存一筆備份，支援一鍵直接還原） -->
+          <div style="margin-top:14px; padding-top:12px; border-top:1px solid var(--border);">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+              <label class="form-label" style="margin:0; color:var(--primary);">🗂️ 方式一：從已匯出的本機備份紀錄一鍵還原</label>
+              <span id="localSnapshotsCount" style="font-size:0.76rem; color:var(--text-muted);">共 0 個備份點</span>
+            </div>
+            <div id="localSnapshotsList"></div>
+          </div>
+
+          <div class="form-group" style="padding-top:12px; margin-top:12px; border-top:1px dashed var(--border);">
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px; margin-bottom:6px;">
+              <label class="form-label" for="importJsonFile" style="margin:0;">📂 方式二：開啟手機／電腦檔案還原（支援實質挑選資料夾與檔案）</label>
+              <button type="button" class="btn btn-primary" id="btnPickFileApi" style="padding:5px 12px; font-size:0.78rem;">
+                📁 瀏覽資料夾選取檔案
+              </button>
+            </div>
+            <input type="file" id="importJsonFile" accept="*/*" class="input-text" />
           </div>
 
           <div class="form-group" style="padding-top:10px; border-top:1px dashed var(--border);">
-            <label class="form-label" for="importJsonTextarea">📋 方法二：直接貼上 JSON 備份內容測試還原（適合在預覽環境直接測試）</label>
-            <textarea id="importJsonTextarea" class="export-textarea" style="min-height:95px;" placeholder="在此貼上匯出的 JSON 內容，可修改裏面的金額或內容後點擊下方按鈕測試還原效果..."></textarea>
-            <button type="button" class="btn btn-primary" id="btnImportFromText" style="margin-top:8px; padding:8px 14px; font-size:0.85rem;">
-              ✅ 從貼上內容執行還原測試
-            </button>
+            <label class="form-label" for="importJsonTextarea">📋 方式三：貼上 JSON 或 CSV 備份文字直接還原</label>
+            <textarea id="importJsonTextarea" class="export-textarea" style="min-height:95px;" placeholder="在此貼上匯出的 JSON 或 CSV 內容，點擊下方按鈕即可立即還原數據..."></textarea>
+            <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:8px;">
+              <button type="button" class="btn btn-primary" id="btnImportFromText" style="padding:9px 16px; font-size:0.88rem;">
+                ✅ 從貼上內容執行還原測試
+              </button>
+              <button type="button" class="btn btn-secondary" id="btnPasteAndRestoreNow" style="padding:9px 14px; font-size:0.84rem;">
+                ⚡ 直接將剛匯出的內容一鍵還原
+              </button>
+            </div>
           </div>
         </div>
 
