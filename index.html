@@ -1,0 +1,997 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#1e463a" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="WYyTy" />
+  <title>WYyTy - 個人中藥開單紀錄及佣金分析</title>
+    <link rel="manifest" href="./manifest.json" />
+  <link rel="apple-touch-icon" href="./icon-192.png" />
+  <link rel="icon" type="image/png" sizes="192x192" href="./icon-192.png" />
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+
+  <!-- ==================== WYyTy 密碼保護解鎖畫面 ==================== -->
+  <div id="wyytyLockScreen" class="lock-screen-overlay">
+    <div class="lock-brand-wrap">
+      <div class="lock-brand-logo">🌿</div>
+      <div class="lock-brand-title">WYyTy</div>
+      <div class="lock-brand-sub">個人中藥開單紀錄及佣金分析</div>
+    </div>
+    <div class="lock-card">
+      <div style="font-size:0.9rem; font-weight:600; margin-bottom:12px; color:rgba(255,255,255,0.9);">
+        🔒 請輸入存取密碼
+      </div>
+      <form id="lockScreenForm" onsubmit="return false;">
+        <input type="password" id="lockPasswordInput" class="lock-input" placeholder="••••••••" autocomplete="current-password" inputmode="numeric" />
+        <button type="submit" id="btnUnlockApp" class="lock-btn">解鎖進入 WYyTy</button>
+      </form>
+      <div id="lockErrorMsg" class="lock-error-text"></div>
+      <div style="font-size:0.75rem; color:rgba(255,255,255,0.6); margin-top:8px;">
+        預設密碼：66668888（可在設定更改或關閉）
+      </div>
+    </div>
+  </div>
+
+
+  <!-- Top Header -->
+  <header class="app-header">
+    <div class="header-inner">
+      <div class="brand-title">
+        <div class="brand-icon">🌿</div>
+        <div>
+          <h1>WYyTy</h1>
+          <div class="brand-subtitle">
+            <span class="offline-badge">● 本地離線儲存模式</span>
+        <button type="button" class="btn btn-warn" id="btnPwaInstall" style="display:none; padding:4px 8px; font-size:0.75rem;">📲 安裝 WYyTy</button>
+            <span id="liveClockDisplay">--</span>
+          </div>
+        </div>
+      </div>
+      <div style="display:flex; gap:8px; align-items:center;">
+        
+      </div>
+    </div>
+  </header>
+
+  <!-- Navigation Tabs -->
+  <nav class="nav-bar">
+    <div class="nav-inner">
+      <button type="button" class="nav-btn active" data-view="entry">📝 輸入開單</button>
+      <button type="button" class="nav-btn" data-view="calendar">📅 月曆紀錄</button>
+      <button type="button" class="nav-btn" data-view="analytics">📊 數據分析</button>
+      <button type="button" class="nav-btn" data-view="backup">💾 備份與管理</button>
+    </div>
+  </nav>
+
+  <!-- Main Content -->
+  <main class="main-container">
+
+    <!-- ==================== VIEW 1: 輸入開單介面 ==================== -->
+    <section id="view-entry" class="view-section active">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">📝 新增中藥開單紀錄</div>
+          <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+            <button type="button" class="btn btn-secondary" id="btnToggleRateConfig" style="padding:6px 12px; font-size:0.8rem;">
+              ⚙️ 修改默認佣金% (<span id="headerRateSummary">20% / 15% / 7%</span>)
+            </button>
+            <div class="mode-switch">
+              <button type="button" class="mode-btn active" id="modeBtnSingle">單筆選擇輸入</button>
+              <button type="button" class="mode-btn" id="modeBtnMulti">1仔/2仔/3仔分欄同時輸入</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Editable Default Commission % Bar -->
+        <div class="rate-config-bar" id="rateConfigPanel" style="display:none;">
+          <div class="rate-config-top">
+            <div>
+              <strong style="color:#7c5313; font-size:0.92rem;">⚙️ 自訂 1仔 / 2仔 / 3仔 默認佣金百分比 (%)</strong>
+              <div style="font-size:0.76rem; color:var(--text-muted);">修改並儲存後，全系統將自動以新的百分比作為默認佣金率</div>
+            </div>
+            <button type="button" class="btn btn-secondary" id="btnResetDefaultRates" style="padding:5px 10px; font-size:0.76rem;">恢復初始 (20% / 15% / 7%)</button>
+          </div>
+          <div class="rate-inputs-row">
+            <div>
+              <label class="form-label" for="rateInput1">1仔 佣金 (%)</label>
+              <div class="rate-input-wrap">
+                <input type="number" id="rateInput1" class="input-text" min="0" max="100" step="0.1" value="20" />
+                <span>%</span>
+              </div>
+            </div>
+            <div>
+              <label class="form-label" for="rateInput2">2仔 佣金 (%)</label>
+              <div class="rate-input-wrap">
+                <input type="number" id="rateInput2" class="input-text" min="0" max="100" step="0.1" value="15" />
+                <span>%</span>
+              </div>
+            </div>
+            <div>
+              <label class="form-label" for="rateInput3">3仔 佣金 (%)</label>
+              <div class="rate-input-wrap">
+                <input type="number" id="rateInput3" class="input-text" min="0" max="100" step="0.1" value="7" />
+                <span>%</span>
+              </div>
+            </div>
+            <div style="display:flex; flex-direction:column; gap:6px;">
+              <label style="font-size:0.75rem; display:flex; align-items:center; gap:5px; cursor:pointer; color:var(--text-main);">
+                <input type="checkbox" id="chkRecalcExisting" />
+                <span>同時更新過往所有紀錄的佣金</span>
+              </label>
+              <button type="button" class="btn btn-primary" id="btnSaveCustomRates" style="padding:8px 14px; font-size:0.86rem;">
+                💾 儲存為默認佣金%
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Mode A: Single Amount Input + Side-by-Side 1仔/2仔/3仔 Selector -->
+        <div id="entryPanelSingle">
+          <div class="quick-entry-row">
+            <div class="form-group">
+              <label class="form-label" for="singleAmountInput">開單金額 ($ HKD)</label>
+              <input type="number" id="singleAmountInput" class="input-text" placeholder="請輸入開單金額，例如 1280" min="0" step="0.01" />
+              <div class="form-hint">輸入金額後，在旁邊點選 1仔、2仔 或 3仔 即可自動計算佣金</div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">選擇佣金級別（旁邊點選）</label>
+              <div class="tier-selector-group" id="singleTierSelector">
+                <button type="button" class="tier-option-btn active" data-tier="1">
+                  <span class="t-name">1仔</span>
+                  <span class="t-rate" id="singleBtnRate1">20% 佣</span>
+                </button>
+                <button type="button" class="tier-option-btn" data-tier="2">
+                  <span class="t-name">2仔</span>
+                  <span class="t-rate" id="singleBtnRate2">15% 佣</span>
+                </button>
+                <button type="button" class="tier-option-btn" data-tier="3">
+                  <span class="t-name">3仔</span>
+                  <span class="t-rate" id="singleBtnRate3">7% 佣</span>
+                </button>
+                <button type="button" class="tier-option-btn" data-tier="4" id="btnTierOther">
+                  <span class="t-name">其他</span>
+                  <span class="t-rate" id="singleBtnRateOther">自訂佣金</span>
+                </button>
+              </div>
+              <div id="otherTierRateWrap" style="display:none; margin-top:10px; background:#fff7ed; border:1px solid #fed7aa; border-radius:8px; padding:10px;">
+                <label class="form-label" for="customTierRateInput" style="color:#c2410c; margin-bottom:4px;">
+                  ✏️ 設定「其他」佣金百分比 (%)：
+                </label>
+                <div style="display:flex; align-items:center; gap:8px;">
+                  <input type="number" id="customTierRateInput" class="input-text" style="width:110px; font-weight:700; text-align:right;" min="0" max="100" step="0.1" value="10" />
+                  <span style="font-weight:700; color:#c2410c;">%</span>
+                  <span style="font-size:0.78rem; color:#9a3412;">(計算佣金：金額 × <span id="customRatePreviewPct">10%</span>)</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Mode B: Dedicated Input Columns for 1仔, 2仔, 3仔 -->
+        <div id="entryPanelMulti" style="display:none;">
+          <div class="form-hint" style="margin-bottom:8px;">
+            可在下方 1仔、2仔、3仔 專屬輸入欄分別填寫開單金額（有填寫金額的欄位將一併建立紀錄）：
+          </div>
+          <div class="tier-columns">
+            <div class="tier-box t1">
+              <div class="tier-box-header">
+                <strong>1仔 開單金額</strong>
+                <span class="tier-badge t1" id="multiBadgeRate1">20% 佣金</span>
+              </div>
+              <input type="number" id="multiAmt1" class="input-text" placeholder="輸入 1仔 金額 ($)" min="0" step="0.01" />
+              <div class="comm-preview">
+                <span>預計佣金：</span>
+                <strong id="multiComm1">$0.00</strong>
+              </div>
+            </div>
+
+            <div class="tier-box t2">
+              <div class="tier-box-header">
+                <strong>2仔 開單金額</strong>
+                <span class="tier-badge t2" id="multiBadgeRate2">15% 佣金</span>
+              </div>
+              <input type="number" id="multiAmt2" class="input-text" placeholder="輸入 2仔 金額 ($)" min="0" step="0.01" />
+              <div class="comm-preview">
+                <span>預計佣金：</span>
+                <strong id="multiComm2">$0.00</strong>
+              </div>
+            </div>
+
+            <div class="tier-box t3">
+              <div class="tier-box-header">
+                <strong>3仔 開單金額</strong>
+                <span class="tier-badge t3" id="multiBadgeRate3">7% 佣金</span>
+              </div>
+              <input type="number" id="multiAmt3" class="input-text" placeholder="輸入 3仔 金額 ($)" min="0" step="0.01" />
+              <div class="comm-preview">
+                <span>預計佣金：</span>
+                <strong id="multiComm3">$0.00</strong>
+              </div>
+            </div>
+            <div class="tier-box t4">
+              <div class="tier-box-header">
+                <strong>其他 (自訂佣金)</strong>
+                <div style="display:flex; align-items:center; gap:2px;">
+                  <span style="font-size:0.75rem; color:var(--text-muted);">佣金</span>
+                  <input type="number" id="multiOtherRate" class="input-text" value="10" min="0" max="100" step="0.1" style="width:58px; padding:2px 4px; font-size:0.78rem; text-align:right;" />
+                  <span style="font-size:0.75rem; font-weight:700;">%</span>
+                </div>
+              </div>
+              <input type="number" id="multiAmtOther" class="input-text" placeholder="輸入 其他 金額 ($)" min="0" step="0.01" />
+              <div class="comm-preview">
+                <span>預計佣金：</span>
+                <strong id="multiCommOther">$0.00</strong>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Always visible quick-sync 1仔/2仔/3仔 dedicated boxes below Single Mode for convenience -->
+        <div id="syncedTierBoxesWrap" style="margin-top: 8px; padding-top: 12px; border-top: 1px dashed var(--border);">
+          <div class="form-label" style="display:flex; justify-content:space-between; align-items:center;">
+            <span id="directBoxesHeaderTitle">1仔 / 2仔 / 3仔 / 其他 專屬輸入欄（可直接於下方任一欄輸入或與上方連動）</span>
+          </div>
+          <div class="tier-columns">
+            <div class="tier-box t1">
+              <div class="tier-box-header">
+                <strong id="directTitle1">1仔 (20%佣) 輸入欄</strong>
+                <span class="tier-badge t1" id="directBadge1">20%</span>
+              </div>
+              <input type="number" id="directTier1Input" class="input-text" placeholder="1仔開單金額 ($)" min="0" step="0.01" />
+              <div class="comm-preview">
+                <span>1仔佣金：</span>
+                <strong id="directTier1Comm">$0.00</strong>
+              </div>
+            </div>
+            <div class="tier-box t2">
+              <div class="tier-box-header">
+                <strong id="directTitle2">2仔 (15%佣) 輸入欄</strong>
+                <span class="tier-badge t2" id="directBadge2">15%</span>
+              </div>
+              <input type="number" id="directTier2Input" class="input-text" placeholder="2仔開單金額 ($)" min="0" step="0.01" />
+              <div class="comm-preview">
+                <span>2仔佣金：</span>
+                <strong id="directTier2Comm">$0.00</strong>
+              </div>
+            </div>
+            <div class="tier-box t3">
+              <div class="tier-box-header">
+                <strong id="directTitle3">3仔 (7%佣) 輸入欄</strong>
+                <span class="tier-badge t3" id="directBadge3">7%</span>
+              </div>
+              <input type="number" id="directTier3Input" class="input-text" placeholder="3仔開單金額 ($)" min="0" step="0.01" />
+              <div class="comm-preview">
+                <span>3仔佣金：</span>
+                <strong id="directTier3Comm">$0.00</strong>
+              </div>
+            </div>
+            <div class="tier-box t4">
+              <div class="tier-box-header">
+                <strong id="directTitleOther">其他 (自訂佣金) 輸入欄</strong>
+                <span class="tier-badge t4" id="directBadgeOther">自訂%</span>
+              </div>
+              <div style="display:flex; gap:6px; margin-bottom:6px;">
+                <input type="number" id="directTierOtherInput" class="input-text" placeholder="開單金額 ($)" min="0" step="0.01" style="flex:1.4;" />
+                <div style="display:flex; align-items:center; gap:2px; flex:1;">
+                  <input type="number" id="directTierOtherRate" class="input-text" placeholder="佣金%" min="0" max="100" step="0.1" value="10" style="padding:10px 6px; text-align:right;" />
+                  <span style="font-size:0.8rem; font-weight:700;">%</span>
+                </div>
+              </div>
+              <div class="comm-preview">
+                <span>其他佣金：</span>
+                <strong id="directTierOtherComm">$0.00</strong>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Date and Time (Hour, Minute) Input Section -->
+        <div style="margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--bg-subtle);">
+          <div class="datetime-grid">
+            <div>
+              <label class="form-label" for="entryDateInput">開單日期（選填，範圍 2023–2060）</label>
+              <input type="date" id="entryDateInput" class="input-text" min="2023-01-01" max="2060-12-31" />
+            </div>
+            <div>
+              <label class="form-label" for="entryHourInput">小時 (00–23，選填)</label>
+              <input type="number" id="entryHourInput" class="input-text" placeholder="小時 (如 14)" min="0" max="23" />
+            </div>
+            <div>
+              <label class="form-label" for="entryMinuteInput">分鐘 (00–59，選填)</label>
+              <input type="number" id="entryMinuteInput" class="input-text" placeholder="分鐘 (如 30)" min="0" max="59" />
+            </div>
+            <div>
+              <button type="button" class="btn btn-secondary btn-block" id="btnClearDateTime" title="清空日期時間，採用按下確認鍵的一刻">
+                🕒 清空 (默認當下)
+              </button>
+            </div>
+          </div>
+          <div class="form-hint" style="margin-top:6px;">
+            💡 提示：如沒有填寫日期或時間（小時、分鐘），系統默認開單日期及時間為<strong>按下「確認輸入」按鍵的一刻</strong>。
+          </div>
+        </div>
+
+        
+        <!-- Photo Upload Section: 開單單據 & 貨品圖片 (支援拍照或選取圖片) -->
+        <div class="photo-upload-section">
+          <label class="form-label">📷 上傳開單單據及貨品圖片（選填，支援手機直接拍照或從相簿選取圖片，離線自動壓縮保存）</label>
+          <div class="photo-category-grid">
+            <!-- 開單單據圖片 -->
+            <div class="photo-cat-box">
+              <div class="photo-cat-header">
+                <strong style="font-size:0.88rem; color:var(--primary);">🧾 開單單據圖片</strong>
+                <div class="photo-btn-group">
+                  <button type="button" class="btn-photo-action" id="btnCamReceipt">📷 拍照單據</button>
+                  <button type="button" class="btn-photo-action" id="btnPickReceipt">🖼️ 選取圖片</button>
+                </div>
+              </div>
+              <input type="file" id="inputCamReceipt" accept="image/*" capture="environment" style="display:none;" />
+              <input type="file" id="inputPickReceipt" accept="image/*" multiple style="display:none;" />
+              <div class="thumb-list" id="entryReceiptThumbs">
+                <span style="font-size:0.75rem; color:var(--text-muted);">尚未附上開單單據圖片</span>
+              </div>
+            </div>
+
+            <!-- 貨品圖片 -->
+            <div class="photo-cat-box">
+              <div class="photo-cat-header">
+                <strong style="font-size:0.88rem; color:var(--primary);">📦 貨品 / 中藥圖片</strong>
+                <div class="photo-btn-group">
+                  <button type="button" class="btn-photo-action" id="btnCamProduct">📷 拍照貨品</button>
+                  <button type="button" class="btn-photo-action" id="btnPickProduct">🖼️ 選取圖片</button>
+                </div>
+              </div>
+              <input type="file" id="inputCamProduct" accept="image/*" capture="environment" style="display:none;" />
+              <input type="file" id="inputPickProduct" accept="image/*" multiple style="display:none;" />
+              <div class="thumb-list" id="entryProductThumbs">
+                <span style="font-size:0.75rem; color:var(--text-muted);">尚未附上貨品圖片</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Live Calculation Summary & Confirm Button -->
+        <div class="live-calc-bar">
+          <div class="live-calc-nums">
+            <div class="live-calc-item">
+              <span>本次開單總額</span>
+              <strong id="previewTotalAmount">$0.00</strong>
+            </div>
+            <div class="live-calc-item">
+              <span>本次預計總佣金</span>
+              <strong id="previewTotalCommission">$0.00</strong>
+            </div>
+            <div class="live-calc-item">
+              <span>將記錄類別</span>
+              <strong id="previewTierText">--</strong>
+            </div>
+          </div>
+          <button type="button" class="btn btn-primary" id="btnConfirmEntry" style="min-width: 180px; font-size: 1.02rem;">
+            ✅ 確認輸入
+          </button>
+        </div>
+      </div>
+
+      <!-- Recent Entries List -->
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">🕒 最近輸入的開單紀錄（點擊項目可修改、單純刪除或記錄全單/部分退款）</div>
+          <span id="recentCountLabel" style="font-size:0.82rem; color:var(--text-muted);">共 0 筆有效紀錄</span>
+        </div>
+        <div id="recentOrdersContainer"></div>
+      </div>
+    </section>
+
+    <!-- ==================== VIEW 2: 月曆介面 (2023 - 2060) ==================== -->
+    <section id="view-calendar" class="view-section">
+      <div class="card">
+        <div class="cal-controls">
+          <div class="cal-nav-group">
+            <button type="button" class="btn btn-secondary" id="btnPrevMonth">◀ 上月</button>
+            <select id="calYearSelect" class="cal-select" aria-label="選擇年份"></select>
+            <select id="calMonthSelect" class="cal-select" aria-label="選擇月份"></select>
+            <button type="button" class="btn btn-secondary" id="btnNextMonth">下月 ▶</button>
+            <button type="button" class="btn btn-secondary" id="btnGoToday">回到本月</button>
+          </div>
+          <div style="font-size: 0.82rem; color: var(--text-muted);">
+            💡 點選月曆中任一日子，可查看該天明細；再點選金額可<strong>修改</strong>、<strong>單純刪除（填錯）</strong>或<strong>全單/部分退款</strong>
+          </div>
+        </div>
+
+        <!-- Monthly Summary Strip -->
+        <div class="grid-4" style="margin-bottom: 14px;">
+          <div class="kpi-card">
+            <span class="kpi-label" id="calSumMonthLabel">本月有效開單總額</span>
+            <span class="kpi-value" id="calSumTotalAmt">$0.00</span>
+            <span class="kpi-sub" id="calSumOrderCount">共 0 單 (開單日數: 0 日)</span>
+          </div>
+          <div class="kpi-card">
+            <span class="kpi-label">本月總佣金收入</span>
+            <span class="kpi-value" id="calSumTotalComm" style="color:var(--accent-gold);">$0.00</span>
+            <span class="kpi-sub" id="calSumTierBreakdown">1仔 $0 | 2仔 $0 | 3仔 $0</span>
+          </div>
+          <div class="kpi-card">
+            <span class="kpi-label">本月平均每單金額</span>
+            <span class="kpi-value" id="calSumAvgOrder">$0.00</span>
+            <span class="kpi-sub" id="calSumAvgActiveDay">每個開單日平均: $0.00</span>
+          </div>
+          <div class="kpi-card">
+            <span class="kpi-label">本月已退款金額</span>
+            <span class="kpi-value" id="calSumRefundAmt" style="color:var(--danger);">$0.00</span>
+            <span class="kpi-sub" id="calSumRefundCount">全退/部分退款: 0 筆</span>
+          </div>
+        </div>
+
+        <!-- Calendar Grid -->
+        <div class="cal-weekdays">
+          <div>日</div>
+          <div>一</div>
+          <div>二</div>
+          <div>三</div>
+          <div>四</div>
+          <div>五</div>
+          <div>六</div>
+        </div>
+        <div class="cal-grid" id="calendarGrid"></div>
+      </div>
+    </section>
+
+    <!-- ==================== VIEW 3: 數據分析介面 ==================== -->
+    <section id="view-analytics" class="view-section">
+      <!-- Filter Card -->
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">🔍 分析範圍設定（支援單月、指定數個月份、或全年總分析）</div>
+          <div class="mode-switch" id="analyticsScopeSwitch">
+            <button type="button" class="mode-btn active" data-scope="multi-month">限定指定一個或數月份</button>
+            <button type="button" class="mode-btn" data-scope="full-year">整年總分析</button>
+            <button type="button" class="mode-btn" data-scope="all-time">全部年份總覽</button>
+          </div>
+        </div>
+
+        <div id="analyticsFilterControls">
+          <div style="display:flex; flex-wrap:wrap; gap:12px; align-items:center; justify-content:space-between;">
+            <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+              <label class="form-label" for="anaYearSelect" style="margin:0;">選擇分析年份：</label>
+              <select id="anaYearSelect" class="cal-select"></select>
+              <span id="selectedMonthsDesc" style="font-size:0.84rem; color:var(--primary); font-weight:700;"></span>
+            </div>
+            <div id="monthQuickBtns" style="display:flex; gap:6px; flex-wrap:wrap;">
+              <button type="button" class="btn btn-secondary" id="btnSelectCurrentMonth" style="padding:5px 10px; font-size:0.78rem;">只看本月</button>
+              <button type="button" class="btn btn-secondary" id="btnSelectH1" style="padding:5px 10px; font-size:0.78rem;">上半年 (1-6月)</button>
+              <button type="button" class="btn btn-secondary" id="btnSelectH2" style="padding:5px 10px; font-size:0.78rem;">下半年 (7-12月)</button>
+              <button type="button" class="btn btn-secondary" id="btnSelectAllMonths" style="padding:5px 10px; font-size:0.78rem;">全選 12 個月</button>
+            </div>
+          </div>
+
+          <div id="monthChipsContainer" class="month-chips"></div>
+          <div class="form-hint" id="monthChipHint" style="margin-top:6px;">
+            💡 點擊上方月份標籤可自由勾選<strong>單一月份</strong>或<strong>任意數個月份</strong>作組合分析。
+          </div>
+        </div>
+      </div>
+
+      <!-- KPI Overview Cards -->
+      <div class="grid-4" style="margin-bottom:16px;">
+        <div class="kpi-card">
+          <span class="kpi-label">期間有效開單總額</span>
+          <span class="kpi-value" id="anaTotalSales">$0.00</span>
+          <span class="kpi-sub" id="anaTotalOrdersSub">有效開單：0 單</span>
+        </div>
+        <div class="kpi-card">
+          <span class="kpi-label">期間總佣金收入</span>
+          <span class="kpi-value" id="anaTotalCommission" style="color:var(--accent-gold);">$0.00</span>
+          <span class="kpi-sub" id="anaEffectiveCommRate">平均佣金率：0.0%</span>
+        </div>
+        <div class="kpi-card">
+          <span class="kpi-label">平均開單金額</span>
+          <span class="kpi-value" id="anaAvgOrderAmt">$0.00</span>
+          <span class="kpi-sub" id="anaAvgMonthlyAmt">每月平均開單額：$0.00</span>
+        </div>
+        <div class="kpi-card">
+          <span class="kpi-label">期間退款總金額</span>
+          <span class="kpi-value" id="anaTotalRefundAmt" style="color:var(--danger);">$0.00</span>
+          <span class="kpi-sub" id="anaTotalRefundCount">退款紀錄：0 筆 (退款率 0%)</span>
+        </div>
+      </div>
+
+      <!-- 1仔 / 2仔 / 3仔 分別以及總佣金 -->
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">🥇 1仔、2仔、3仔 開單分別及總佣金分析</div>
+          </div>
+          <div id="tierBreakdownVisual"></div>
+          <div class="table-wrap" style="margin-top:12px;">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>級別 (默認佣金率)</th>
+                  <th class="num-col">有效單數</th>
+                  <th class="num-col">有效開單金額</th>
+                  <th class="num-col">佔總額比例</th>
+                  <th class="num-col">應得佣金</th>
+                </tr>
+              </thead>
+              <tbody id="tierBreakdownTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- 開單日子次數的分析 -->
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">📆 開單日子次數及星期分佈分析</div>
+          </div>
+          <div class="grid-3" id="dayFreqKpis" style="margin-bottom:12px;"></div>
+          <div style="font-size:0.84rem; font-weight:700; margin-bottom:8px; color:var(--primary);">星期一至星期日開單次數及金額分佈：</div>
+          <div id="weekdayDistributionChart"></div>
+        </div>
+      </div>
+
+      <!-- 每月 1仔、2仔、3仔 分別、總佣金、每月平均開單金額、開單日數明細表 -->
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">📈 每月 1仔 / 2仔 / 3仔 明細、總佣金及每月平均開單金額</div>
+        </div>
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>年-月份</th>
+                <th class="num-col">開單日數</th>
+                <th class="num-col">有效單數</th>
+                <th class="num-col" id="thMonthTier1">1仔金額</th>
+                <th class="num-col" id="thMonthTier2">2仔金額</th>
+                <th class="num-col" id="thMonthTier3">3仔金額</th>
+                <th class="num-col">該月有效總額</th>
+                <th class="num-col">該月總佣金</th>
+                <th class="num-col">每單平均金額</th>
+                <th class="num-col">退款金額 (筆數)</th>
+              </tr>
+            </thead>
+            <tbody id="monthlyDetailTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- 開單時間的分析 & 退款原因分析 -->
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">⏰ 開單時間分析（時段及小時分佈）</div>
+          </div>
+          <div id="timePeriodSummary" style="margin-bottom:14px;"></div>
+          <div style="font-size:0.84rem; font-weight:700; margin-bottom:8px; color:var(--primary);">24小時開單活躍度分佈（按開單時間）：</div>
+          <div id="hourlyDistributionContainer" style="max-height:280px; overflow-y:auto; padding-right:4px;"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">↩️ 退款金額及退款原因分析（含全單及部分退款）</div>
+          </div>
+          <div id="refundReasonChart"></div>
+          <div class="table-wrap" style="margin-top:12px;">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>退款原因</th>
+                  <th class="num-col">退款筆數</th>
+                  <th class="num-col">退款金額</th>
+                  <th class="num-col">佔退款比例</th>
+                </tr>
+              </thead>
+              <tbody id="refundReasonTableBody"></tbody>
+            </table>
+          </div>
+          <div id="refundRecordsDetailList" style="margin-top:12px;"></div>
+        </div>
+      </div>
+
+      <!-- 每年的總分析 (Annual Summary across Years) -->
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">🏆 每年的總分析（年度匯總對比）</div>
+        </div>
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>年份</th>
+                <th class="num-col">全年開單日數</th>
+                <th class="num-col">有效總單數</th>
+                <th class="num-col" id="thYearTier1">1仔總額</th>
+                <th class="num-col" id="thYearTier2">2仔總額</th>
+                <th class="num-col" id="thYearTier3">3仔總額</th>
+                <th class="num-col">全年有效總額</th>
+                <th class="num-col">全年總佣金</th>
+                <th class="num-col">每月平均開單額</th>
+                <th class="num-col">每單平均金額</th>
+                <th class="num-col">全年退款總額</th>
+              </tr>
+            </thead>
+            <tbody id="yearlySummaryTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== VIEW 4: 設置與備份 ==================== -->
+    <section id="view-backup" class="view-section">
+      
+      <!-- Password Protection Settings Card -->
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">🔐 WYyTy 密碼保護設置</div>
+          <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:0.9rem; font-weight:700;">
+            <input type="checkbox" id="chkEnablePassword" checked />
+            <span id="labelPasswordStatus">已開啟密碼保護</span>
+          </label>
+        </div>
+        <p style="font-size:0.86rem; color:var(--text-muted); margin-bottom:14px;">
+          開啟後，每次重新開啟應用或重新載入頁面時，均需先輸入正確密碼才能進入系統。預設密碼為 <strong>66668888</strong>。
+        </p>
+        <div id="passwordSettingPanel" class="grid-3" style="gap:12px; margin-bottom:12px;">
+          <div>
+            <label class="form-label" for="inputCurrentPassword">目前密碼</label>
+            <input type="password" id="inputCurrentPassword" class="input-text" placeholder="輸入目前密碼" />
+          </div>
+          <div>
+            <label class="form-label" for="inputNewPassword">新密碼</label>
+            <input type="password" id="inputNewPassword" class="input-text" placeholder="輸入新密碼 (至少4位)" />
+          </div>
+          <div>
+            <label class="form-label" for="inputConfirmPassword">確認新密碼</label>
+            <input type="password" id="inputConfirmPassword" class="input-text" placeholder="再次輸入新密碼" />
+          </div>
+        </div>
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+          <button type="button" class="btn btn-secondary" id="btnLockAppNow">🔒 立即鎖定畫面</button>
+          <button type="button" class="btn btn-primary" id="btnSaveNewPassword">💾 儲存密碼設定</button>
+        </div>
+      </div>
+
+      <!-- Commission Rate Settings in Backup/Settings Tab too -->
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">⚙️ 默認佣金百分比 (%) 設置</div>
+        </div>
+        <p style="font-size:0.86rem; color:var(--text-muted); margin-bottom:12px;">
+          可隨時自訂 1仔、2仔、3仔 的佣金百分比。修改儲存後即成為系統默認值，日後新輸入的開單將自動按新百分比計算。
+        </p>
+        <div class="grid-3" style="margin-bottom:12px;">
+          <div class="tier-box t1">
+            <label class="form-label" for="settingsRate1">1仔 默認佣金 (%)</label>
+            <input type="number" id="settingsRate1" class="input-text" min="0" max="100" step="0.1" value="20" />
+          </div>
+          <div class="tier-box t2">
+            <label class="form-label" for="settingsRate2">2仔 默認佣金 (%)</label>
+            <input type="number" id="settingsRate2" class="input-text" min="0" max="100" step="0.1" value="15" />
+          </div>
+          <div class="tier-box t3">
+            <label class="form-label" for="settingsRate3">3仔 默認佣金 (%)</label>
+            <input type="number" id="settingsRate3" class="input-text" min="0" max="100" step="0.1" value="7" />
+          </div>
+        </div>
+        <div style="display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:10px;">
+          <label style="font-size:0.85rem; display:flex; align-items:center; gap:6px; cursor:pointer;">
+            <input type="checkbox" id="chkSettingsRecalcExisting" />
+            <span>同時將新的佣金%套用至所有現有開單紀錄</span>
+          </label>
+          <div style="display:flex; gap:8px;">
+            <button type="button" class="btn btn-secondary" id="btnSettingsResetRates">恢復 20% / 15% / 7%</button>
+            <button type="button" class="btn btn-primary" id="btnSettingsSaveRates">💾 儲存默認佣金設置</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">💾 離線數據備份與還原</div>
+          </div>
+          <p style="font-size:0.88rem; color:var(--text-muted); margin-bottom:14px;">
+            所有開單、退款紀錄及自訂佣金設置均自動保存在您的瀏覽器本地儲存空間（LocalStorage），無需連網即可使用。
+          </p>
+          <div style="display:flex; flex-wrap:wrap; gap:10px; margin-bottom:12px;">
+            <button type="button" class="btn btn-primary" id="btnExportJson">⬇️ 匯出 JSON 完整備份</button>
+            <button type="button" class="btn btn-secondary" id="btnExportCsv">📊 匯出 CSV 報表 (Excel)</button>
+          </div>
+          <div class="form-hint" style="margin-bottom:10px; color:var(--primary);">
+            💡 <strong>測試階段說明</strong>：因右側預覽視窗屬於安全沙盒環境，瀏覽器可能會攔截自動彈出的下載視窗。點擊上方匯出按鈕時，系統除了觸發檔案下載外，亦會<strong>即時在下方展開實質匯出內容</strong>，讓你直接檢視、一鍵複製、下載或測試還原！
+          </div>
+
+          <!-- Live Export Inspector & Download / Copy Tester -->
+          <div id="exportInspectorPanel" class="export-inspector-box" style="display:none;">
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+              <strong id="exportInspectorTitle" style="color:var(--primary); font-size:0.9rem;">📄 實質匯出內容預覽</strong>
+              <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                <button type="button" class="btn btn-primary" id="btnCopyExportText" style="padding:6px 12px; font-size:0.78rem;">📋 一鍵複製匯出內容</button>
+                <button type="button" class="btn btn-warn" id="btnNativeShareExport" style="padding:6px 12px; font-size:0.78rem;">📲 手機系統分享/另存</button>
+                <a id="directDownloadLink" href="#exportInspectorPanel" download="backup.json" class="btn btn-secondary" style="padding:6px 12px; font-size:0.78rem; text-decoration:none;">💾 點此直接另存檔案</a>
+                <button type="button" class="btn btn-secondary" id="btnFillImportFromExport" style="padding:6px 12px; font-size:0.78rem;">⤵️ 填入下方還原區測試</button>
+              </div>
+            </div>
+            <textarea id="exportInspectorTextarea" class="export-textarea" readonly></textarea>
+            <div id="csvPreviewTableWrap" class="table-wrap" style="display:none; margin-top:10px; max-height:220px; overflow-y:auto;"></div>
+          </div>
+
+          <div class="form-group" style="padding-top:14px; margin-top:14px; border-top:1px solid var(--border);">
+            <label class="form-label" for="importJsonFile">⬆️ 方法一：選擇本地 JSON 備份檔案還原</label>
+            <input type="file" id="importJsonFile" accept=".json" class="input-text" />
+          </div>
+
+          <div class="form-group" style="padding-top:10px; border-top:1px dashed var(--border);">
+            <label class="form-label" for="importJsonTextarea">📋 方法二：直接貼上 JSON 備份內容測試還原（適合在預覽環境直接測試）</label>
+            <textarea id="importJsonTextarea" class="export-textarea" style="min-height:95px;" placeholder="在此貼上匯出的 JSON 內容，可修改裏面的金額或內容後點擊下方按鈕測試還原效果..."></textarea>
+            <button type="button" class="btn btn-primary" id="btnImportFromText" style="margin-top:8px; padding:8px 14px; font-size:0.85rem;">
+              ✅ 從貼上內容執行還原測試
+            </button>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">🔄 範例數據與系統重置</div>
+          </div>
+          <p style="font-size:0.88rem; color:var(--text-muted); margin-bottom:14px;">
+            如需測試月曆檢視、修改開單、單純刪除、全單/部分退款及跨月份分析效果；確認無誤後可一鍵清空所有測試紀錄。
+          </p>
+          <div style="display:flex; flex-wrap:wrap; gap:10px;">
+            
+            <button type="button" class="btn btn-outline-danger" id="btnClearAllData">🗑️ 清空所有紀錄</button>
+          </div>
+          <div id="clearConfirmBox" style="display:none; margin-top:12px; padding:12px; background:var(--danger-bg); border:1px solid #fecaca; border-radius:8px;">
+            <div style="font-weight:700; color:var(--danger); margin-bottom:8px;">確定要永久清空所有開單及退款紀錄嗎？</div>
+            <div style="display:flex; gap:8px;">
+              <button type="button" class="btn btn-danger" id="btnConfirmClearAll">確認清空</button>
+              <button type="button" class="btn btn-secondary" id="btnCancelClearAll">取消</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ==================== MODAL: 點選某一日彈出小視窗 ==================== -->
+  <div class="modal-backdrop" id="dayDetailModal">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3 id="modalDayTitle">2026年11月8日 開單明細</h3>
+        <button type="button" class="modal-close" id="btnCloseDayModal" aria-label="關閉">×</button>
+      </div>
+
+      <!-- Step 1 inside Modal: List of Orders for that Day -->
+      <div class="modal-body" id="modalStepDayList">
+        <div id="modalDaySummaryBar" style="background:var(--bg-subtle); padding:10px 12px; border-radius:8px; margin-bottom:12px; display:flex; justify-content:space-between; flex-wrap:wrap; gap:8px; font-size:0.85rem;"></div>
+        <div style="font-size:0.8rem; color:var(--text-muted); margin-bottom:8px;">
+          👇 點進下方任一開單金額項目，可選擇<strong>返回</strong>、<strong>修改開單</strong>、<strong>單純刪除（填錯不計入退款）</strong>或<strong>全單/部分退款</strong>：
+        </div>
+        <div id="modalDayOrdersList"></div>
+        <div id="modalDayRefundedList" style="margin-top:14px;"></div>
+      </div>
+
+      <!-- Step 2 inside Modal: Clicked into a Specific Order -> Return, Edit, or Delete/Refund -->
+      <div class="modal-body" id="modalStepOrderAction" style="display:none;">
+        <div id="selectedOrderInfoCard" style="background:var(--primary-light); border:1px solid #c5dbd2; border-radius:10px; padding:14px; margin-bottom:14px;"></div>
+
+        <!-- Primary Action Choice Buttons: Return | Edit | Delete/Refund -->
+        <div id="actionChoiceButtons" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap:8px; margin-bottom:10px;">
+          <button type="button" class="btn btn-secondary" id="btnBackToDayList">↩️ 返回當日列表</button>
+          <button type="button" class="btn btn-warn" id="btnShowEditOrder">✏️ 修改開單</button>
+          <button type="button" class="btn btn-danger" id="btnShowDeleteReasons">🗑️ 刪除此單 (退款)</button>
+        </div>
+
+        <!-- Sub-panel A: Edit Order Form (修改開單金額、級別、日期、時間) -->
+        <div id="editOrderPanel" style="display:none; border-top:1px solid var(--border); padding-top:14px; margin-top:10px;">
+          <div style="font-weight:700; color:var(--primary); margin-bottom:10px;">✏️ 修改開單紀錄內容：</div>
+          <div class="grid-2" style="gap:10px;">
+            <div class="form-group" style="margin-bottom:8px;">
+              <label class="form-label" for="editOrderAmount">有效開單金額 ($ HKD)</label>
+              <input type="number" id="editOrderAmount" class="input-text" min="0.01" step="0.01" />
+            </div>
+            <div class="form-group" style="margin-bottom:8px;">
+              <label class="form-label" for="editOrderTier">選擇級別 (1仔 / 2仔 / 3仔)</label>
+              <select id="editOrderTier" class="input-select">
+                <option value="1">1仔</option>
+                <option value="2">2仔</option>
+                <option value="3">3仔</option>
+                <option value="4">其他 (自訂佣金率)</option>
+              </select>
+            </div>
+          </div>
+          <div class="grid-3" style="gap:10px; margin-top:4px;">
+            <div class="form-group" style="margin-bottom:8px;">
+              <label class="form-label" for="editOrderRate">此單佣金率 (%)</label>
+              <input type="number" id="editOrderRate" class="input-text" min="0" max="100" step="0.1" />
+            </div>
+            <div class="form-group" style="margin-bottom:8px;">
+              <label class="form-label" for="editOrderDate">開單日期</label>
+              <input type="date" id="editOrderDate" class="input-text" min="2023-01-01" max="2060-12-31" />
+            </div>
+            <div class="form-group" style="margin-bottom:8px;">
+              <label class="form-label" for="editOrderTime">開單時間 (HH:MM)</label>
+              <input type="time" id="editOrderTime" class="input-text" />
+            </div>
+          </div>
+          <!-- Edit Order Photos (查看、新增拍照/選取圖片、或刪除原有單據及貨品圖片) -->
+          <div style="margin-top:10px; padding-top:10px; border-top:1px dashed var(--border);">
+            <div style="font-weight:700; font-size:0.86rem; color:var(--primary); margin-bottom:6px;">📷 查看或修改此單的單據及貨品圖片：</div>
+            <div class="photo-category-grid">
+              <div class="photo-cat-box">
+                <div class="photo-cat-header">
+                  <strong style="font-size:0.82rem;">🧾 開單單據圖片</strong>
+                  <div class="photo-btn-group">
+                    <button type="button" class="btn-photo-action" id="btnEditCamReceipt">📷 拍照</button>
+                    <button type="button" class="btn-photo-action" id="btnEditPickReceipt">🖼️ 選圖</button>
+                  </div>
+                </div>
+                <input type="file" id="inputEditCamReceipt" accept="image/*" capture="environment" style="display:none;" />
+                <input type="file" id="inputEditPickReceipt" accept="image/*" multiple style="display:none;" />
+                <div class="thumb-list" id="editReceiptThumbs"></div>
+              </div>
+
+              <div class="photo-cat-box">
+                <div class="photo-cat-header">
+                  <strong style="font-size:0.82rem;">📦 貨品 / 中藥圖片</strong>
+                  <div class="photo-btn-group">
+                    <button type="button" class="btn-photo-action" id="btnEditCamProduct">📷 拍照</button>
+                    <button type="button" class="btn-photo-action" id="btnEditPickProduct">🖼️ 選圖</button>
+                  </div>
+                </div>
+                <input type="file" id="inputEditCamProduct" accept="image/*" capture="environment" style="display:none;" />
+                <input type="file" id="inputEditPickProduct" accept="image/*" multiple style="display:none;" />
+                <div class="thumb-list" id="editProductThumbs"></div>
+              </div>
+            </div>
+          </div>
+
+          <div style="display:flex; gap:10px; margin-top:12px;">
+            <button type="button" class="btn btn-secondary" id="btnCancelEditOrder" style="flex:1;">返回</button>
+            <button type="button" class="btn btn-primary" id="btnSaveEditOrder" style="flex:1.4;">💾 確認儲存修改</button>
+          </div>
+        </div>
+
+        <!-- Sub-panel B: Delete or Refund Panel (單純刪除 vs 全單退款/部分退款) -->
+        <div id="deleteReasonPanel" style="display:none; border-top:1px solid var(--border); padding-top:14px; margin-top:10px;">
+          <div style="font-weight:700; color:var(--text-main); margin-bottom:8px;">請選擇刪除方式：</div>
+
+          <div class="delete-mode-tabs">
+            <button type="button" class="delete-mode-tab active-refund" id="tabModeRefund">
+              <strong>↩️ 客戶退款（計入退款統計）</strong>
+              <span>可選「全單退款」或「部分退款」及原因</span>
+            </button>
+            <button type="button" class="delete-mode-tab" id="tabModeMistake">
+              <strong>🧹 單純刪除（填寫錯誤）</strong>
+              <span>直接移除此紀錄，不會計入退款金額</span>
+            </button>
+          </div>
+
+          <!-- Mistake Pure Delete Sub-box -->
+          <div id="mistakeDeleteBox" style="display:none; background:var(--bg-subtle); border:1px solid var(--border); border-radius:10px; padding:14px; margin-bottom:12px;">
+            <div style="font-weight:700; color:var(--primary); margin-bottom:4px;">確認單純刪除此筆開單？</div>
+            <p style="font-size:0.83rem; color:var(--text-muted); margin-bottom:12px;">
+              此選項專供輸入錯誤時使用。刪除後此單會直接從月曆及開單紀錄中移除，<strong>不會</strong>記錄在退款金額或退款原因分析內。
+            </p>
+            <div style="display:flex; gap:10px;">
+              <button type="button" class="btn btn-secondary" id="btnCancelMistakeDelete" style="flex:1;">返回</button>
+              <button type="button" class="btn btn-primary" id="btnConfirmPureDelete" style="flex:1.4;">🧹 確認單純刪除（不計退款）</button>
+            </div>
+          </div>
+
+          <!-- Refund Box (Full Refund vs Partial Refund + Reason) -->
+          <div id="refundConfigBox">
+            <div style="font-weight:700; font-size:0.88rem; margin-bottom:6px;">1. 選擇退款幅度（全單退款 / 部分退款）：</div>
+            <div class="refund-type-pills">
+              <button type="button" class="refund-type-pill active" id="pillFullRefund">全單退款</button>
+              <button type="button" class="refund-type-pill" id="pillPartialRefund">部分退款</button>
+            </div>
+
+            <!-- Partial Refund Amount Input -->
+            <div id="partialRefundInputWrap" style="display:none; background:var(--warn-bg); border:1px solid #fde68a; border-radius:8px; padding:12px; margin-bottom:12px;">
+              <label class="form-label" for="partialRefundAmountInput" style="color:#92400e;">
+                輸入部分退款金額 ($ HKD) <span id="partialMaxHint" style="font-weight:400; font-size:0.78rem;"></span>
+              </label>
+              <input type="number" id="partialRefundAmountInput" class="input-text" placeholder="請輸入退還給客人的金額" min="0.01" step="0.01" />
+              <div class="form-hint" id="partialRemainPreview" style="color:#92400e; font-weight:600; margin-top:6px;">
+                扣除部分退款後，此單剩餘有效金額：$0.00（剩餘佣金：$0.00）
+              </div>
+            </div>
+
+            <div style="font-weight:700; color:var(--danger); font-size:0.88rem; margin-bottom:6px;">2. 請選擇退款原因：</div>
+            <div class="reason-list" id="refundReasonOptions">
+              <label class="reason-option selected" data-reason="客人親身退款">
+                <input type="radio" name="refundReasonRadio" value="客人親身退款" checked />
+                <span>1. 客人親身退款</span>
+              </label>
+              <label class="reason-option" data-reason="客人聯絡客服退款">
+                <input type="radio" name="refundReasonRadio" value="客人聯絡客服退款" />
+                <span>2. 客人聯絡客服退款</span>
+              </label>
+              <label class="reason-option" data-reason="消委會介入">
+                <input type="radio" name="refundReasonRadio" value="消委會介入" />
+                <span>3. 消委會介入</span>
+              </label>
+              <label class="reason-option" data-reason="海關介入">
+                <input type="radio" name="refundReasonRadio" value="海關介入" />
+                <span>4. 海關介入</span>
+              </label>
+              <label class="reason-option" data-reason="其他原因">
+                <input type="radio" name="refundReasonRadio" value="其他原因" />
+                <span>5. 手動填寫其他原因</span>
+              </label>
+            </div>
+
+            <div id="customReasonInputWrap" style="display:none; margin-top:8px;">
+              <label class="form-label" for="customRefundReasonInput">請填寫其他退款原因：</label>
+              <input type="text" id="customRefundReasonInput" class="input-text" placeholder="請輸入具體原因..." />
+            </div>
+
+            <div style="display:flex; gap:10px; margin-top:14px;">
+              <button type="button" class="btn btn-secondary" id="btnCancelDeleteStep" style="flex:1;">返回</button>
+              <button type="button" class="btn btn-danger" id="btnConfirmDeleteOrder" style="flex:1.5;">✅ 確認刪除並記錄原因</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer" id="modalDayFooter">
+        <button type="button" class="btn btn-secondary" id="btnQuickAddForDay">➕ 在此日新增開單</button>
+        <button type="button" class="btn btn-primary" id="btnCloseDayModalBottom">完成關閉</button>
+      </div>
+    </div>
+  </div>
+
+  
+  
+  <!-- ==================== MODAL: 內置即時攝像頭拍照視窗 (getUserMedia) ==================== -->
+  <div class="modal-backdrop" id="liveCameraModal" style="z-index: 260;">
+    <div class="camera-modal-box">
+      <div class="camera-header">
+        <strong id="cameraModalTitle">📷 拍攝開單單據圖片</strong>
+        <button type="button" class="modal-close" id="btnCloseCameraModal" aria-label="關閉相機">×</button>
+      </div>
+      <div class="camera-viewport">
+        <video id="cameraVideoEl" autoplay playsinline muted></video>
+        <div class="camera-guide-frame" id="cameraGuideFrame"></div>
+        <div class="camera-fallback-msg" id="cameraFallbackBox" style="display:none;">
+          <div style="font-size:1.6rem; margin-bottom:8px;">📷</div>
+          <div id="cameraErrorText" style="margin-bottom:12px;">
+            目前預覽視窗環境限制了直接調用硬件攝像頭權限（當日後上傳至 GitHub 生成 HTTPS 網址於手機瀏覽器打開時，點選此處即可直接啟動手機即時鏡頭畫面）。
+          </div>
+          <div style="display:flex; flex-direction:column; gap:8px; max-width:280px; margin:0 auto;">
+            <button type="button" class="btn btn-primary" id="btnFallbackSystemCamera">📱 調用系統相機 / 選取相片</button>
+            <button type="button" class="btn btn-warn" id="btnSimulateCameraShot">📸 模擬拍下一張測試相片（測試流程）</button>
+          </div>
+        </div>
+      </div>
+      <div class="camera-controls">
+        <button type="button" class="btn btn-secondary" id="btnSwitchCameraFacing" style="padding:8px 12px; font-size:0.82rem;">🔄 切換前後鏡頭</button>
+        <button type="button" class="btn-shutter" id="btnCapturePhoto">📸 按下快門拍照</button>
+        <button type="button" class="btn btn-secondary" id="btnCancelCamera" style="padding:8px 12px; font-size:0.82rem;">關閉</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== LIGHTBOX: 放大檢視單據及貨品圖片 ==================== -->
+  <div class="lightbox-backdrop" id="photoLightboxModal">
+    <img src="" alt="單據或貨品圖片預覽" class="lightbox-img" id="lightboxImgEl" />
+    <div class="lightbox-caption">
+      <span id="lightboxCaptionText">圖片預覽</span>
+      <button type="button" class="btn btn-secondary" id="btnCloseLightbox" style="padding:6px 14px; font-size:0.85rem;">✕ 關閉預覽</button>
+    </div>
+  </div>
+
+  <!-- Toast Container -->
+  <div class="toast-container" id="toastContainer"></div>
+
+    <script src="./app.js"></script>
+</body>
+</html>

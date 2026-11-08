@@ -1,0 +1,6 @@
+{
+  "appId": "com.wyyty.app",
+  "appName": "WYyTy",
+  "webDir": "www",
+  "bundledWebRuntime": false
+}
