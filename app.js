@@ -2043,20 +2043,23 @@
         `).join('');
       }
 
+      let currentExportFilename = 'WYyTy_備份.json';
+      let currentExportContent = '';
+      let currentExportMime = 'application/json';
+
       function showExportInspector(title, contentStr, filename, mimeType, csvRowsForTable) {
+        currentExportFilename = filename;
+        currentExportContent = contentStr;
+        currentExportMime = mimeType;
+
         const panel = document.getElementById('exportInspectorPanel');
         const titleEl = document.getElementById('exportInspectorTitle');
         const textarea = document.getElementById('exportInspectorTextarea');
-        const dlLink = document.getElementById('directDownloadLink');
         const csvTableWrap = document.getElementById('csvPreviewTableWrap');
 
         panel.style.display = 'block';
         titleEl.textContent = `${title}（檔名：${filename}，共 ${orders.length} 筆紀錄）`;
         textarea.value = contentStr;
-
-        const dataUri = `data:${mimeType};charset=utf-8,` + encodeURIComponent(contentStr);
-        dlLink.href = dataUri;
-        dlLink.setAttribute('download', filename);
 
         if (csvRowsForTable && csvRowsForTable.length > 0) {
           csvTableWrap.style.display = 'block';
@@ -2078,9 +2081,21 @@
       }
 
       async function triggerBrowserOrNativeDownload(filename, contentStr, mimeType) {
-        // 1. File System Access API (showSaveFilePicker)
-        // Requests storage permission and lets the user choose the exact folder and file name!
+        // 1. Android APK Native System Folder Picker (Intent.ACTION_CREATE_DOCUMENT via MainActivity.java)
+        if (window.AndroidFolderSaver && typeof window.AndroidFolderSaver.saveFileToFolder === 'function') {
+          try {
+            window.AndroidFolderSaver.saveFileToFolder(filename, contentStr, mimeType);
+            showImportStatusBanner(`📁 <strong>已開啟手機系統資料夾選取器！</strong>請在彈出的「我的檔案／最近項目」視窗中選擇資料夾並點擊右下角「儲存」（${filename}）。`, false);
+            showToast('📁 請在系統視窗選擇資料夾並點擊「儲存」');
+            return true;
+          } catch (e) {
+            console.warn('AndroidFolderSaver error:', e);
+          }
+        }
+
+        // 2. File System Access API (showSaveFilePicker) — only stop on AbortError if dialog was actually open (>600ms)
         if (typeof window.showSaveFilePicker === 'function') {
+          const t0 = Date.now();
           try {
             const ext = filename.endsWith('.csv') ? '.csv' : '.json';
             const fileDesc = filename.endsWith('.csv') ? 'CSV 報表檔案' : 'JSON 備份檔案';
@@ -2098,35 +2113,29 @@
             showToast(`💾 已儲存至選定資料夾：${filename}`);
             return true;
           } catch (err) {
-            if (err && err.name === 'AbortError') {
+            if (err && err.name === 'AbortError' && (Date.now() - t0) > 600) {
               showToast('💡 已取消選擇資料夾儲存');
               return false;
             }
-            console.warn('showSaveFilePicker fallback to standard download:', err);
+            console.warn('showSaveFilePicker not supported in this WebView, falling back:', err);
           }
         }
 
-        // 2. Android APK / Native bridge if available
-        if (window.AndroidNative && typeof window.AndroidNative.saveFile === 'function') {
-          try {
-            window.AndroidNative.saveFile(filename, contentStr, mimeType);
-            return true;
-          } catch (e) {
-            console.warn('AndroidNative.saveFile error:', e);
-          }
-        }
-
-        // 3. Browser Blob standard download (opens system Downloads / asks for download folder permission)
+        // 3. Browser Blob standard download (triggers browser's native Download prompt)
         try {
           const blob = new Blob([contentStr], { type: mimeType });
           const url = URL.createObjectURL(blob);
           const a = document.createElement('a');
+          a.style.display = 'none';
           a.href = url;
           a.download = filename;
           document.body.appendChild(a);
           a.click();
-          a.remove();
-          setTimeout(() => URL.revokeObjectURL(url), 3000);
+          setTimeout(() => {
+            a.remove();
+            URL.revokeObjectURL(url);
+          }, 4000);
+          return true;
         } catch (e) {
           console.warn('Blob download fallback:', e);
         }
@@ -2475,6 +2484,112 @@
               renderBackupSnapshotsList();
               showToast('🗑️ 已刪除此備份點');
             }
+          });
+        }
+
+        // Dedicated Folder Saving Function (Uses Android Intent.ACTION_CREATE_DOCUMENT in APK, or SaveFilePicker / Blob in Browser)
+        async function saveFileDirectlyToUserFolder(fname, content, mime) {
+          // Method 1: Android APK Native System Folder Picker (Intent.ACTION_CREATE_DOCUMENT)
+          if (window.AndroidFolderSaver && typeof window.AndroidFolderSaver.saveFileToFolder === 'function') {
+            try {
+              window.AndroidFolderSaver.saveFileToFolder(fname, content, mime);
+              showImportStatusBanner(`📁 <strong>已開啟手機系統資料夾選取器！</strong>請在彈出的「我的檔案／最近項目」視窗中選擇手機資料夾並按右下角「儲存」（${fname}）。`, false);
+              showToast('📁 請在手機資料夾視窗點選位置並按「儲存」');
+              return true;
+            } catch (e) {
+              console.warn('AndroidFolderSaver error:', e);
+            }
+          }
+
+          // Method 2: Save File Picker (Desktop / supported mobile browsers)
+          if (typeof window.showSaveFilePicker === 'function') {
+            const t0 = Date.now();
+            try {
+              const ext = fname.endsWith('.csv') ? '.csv' : '.json';
+              const desc = fname.endsWith('.csv') ? 'CSV 報表' : 'JSON 備份';
+              const handle = await window.showSaveFilePicker({
+                suggestedName: fname,
+                types: [{
+                  description: desc,
+                  accept: { [mime.split(';')[0]]: [ext] }
+                }]
+              });
+              const writable = await handle.createWritable();
+              await writable.write(content);
+              await writable.close();
+              showImportStatusBanner(`📁 <strong>成功儲存！</strong>已將【${fname}】儲存至您選取的資料夾。`, false);
+              showToast(`💾 已儲存至選定資料夾：${fname}`);
+              return true;
+            } catch (err) {
+              if (err && err.name === 'AbortError' && (Date.now() - t0) > 600) {
+                showToast('💡 已取消選擇資料夾');
+                return false;
+              }
+              console.warn('showSaveFilePicker fallback:', err);
+            }
+          }
+
+          // Method 3: Directory Picker (only if supported and dialog stayed open >600ms on cancel)
+          if (typeof window.showDirectoryPicker === 'function') {
+            const t0 = Date.now();
+            try {
+              const dirHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
+              const fileHandle = await dirHandle.getFileHandle(fname, { create: true });
+              const writable = await fileHandle.createWritable();
+              await writable.write(content);
+              await writable.close();
+              showImportStatusBanner(`📁 <strong>成功儲存！</strong>已將【${fname}】直接寫入您選取的資料夾。`, false);
+              showToast(`📁 已成功儲存至選定資料夾：${fname}`);
+              return true;
+            } catch (err) {
+              if (err && err.name === 'AbortError' && (Date.now() - t0) > 600) {
+                showToast('💡 已取消選擇資料夾');
+                return false;
+              }
+              console.warn('showDirectoryPicker fallback:', err);
+            }
+          }
+
+          // Method 4: Standard Browser Blob Download + Data URI fallback
+          try {
+            const blob = new Blob([content], { type: mime });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.style.display = 'none';
+            a.href = url;
+            a.download = fname;
+            document.body.appendChild(a);
+            a.click();
+            setTimeout(() => {
+              a.remove();
+              URL.revokeObjectURL(url);
+            }, 4000);
+            showImportStatusBanner(`💾 <strong>已觸發檔案下載【${fname}】！</strong>（在獨立安裝的 WYyTy.apk 內點擊此按鈕將直接開啟 Android 系統資料夾另存視窗）。`, false);
+            showToast(`💾 已觸發檔案下載：${fname}`);
+            return true;
+          } catch (err) {
+            console.warn('Download fallback error:', err);
+          }
+
+          showToast('💡 已同時複製備份內容至剪貼簿');
+          return false;
+        }
+
+        const btnDirectDl = document.getElementById('directDownloadLink');
+        if (btnDirectDl) {
+          btnDirectDl.addEventListener('click', async (e) => {
+            e.preventDefault();
+            const ta = document.getElementById('exportInspectorTextarea');
+            const content = (ta && ta.value) || currentExportContent;
+            const fname = currentExportFilename || 'WYyTy_備份.json';
+            const mime = currentExportMime || 'application/json';
+
+            if (!content) {
+              showToast('⚠️ 目前沒有可另存的內容，請先點擊上方匯出按鈕！');
+              return;
+            }
+
+            await saveFileDirectlyToUserFolder(fname, content, mime);
           });
         }
 
