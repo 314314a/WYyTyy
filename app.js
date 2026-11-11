@@ -2,6 +2,24 @@
       // ==================== CONSTANTS & STATE ====================
       const STORAGE_KEY = 'tcm_orders_records_v2';
 
+
+      // ==================== BROWSER PERSISTENT STORAGE ====================
+      async function requestPersistentStorage() {
+        if (navigator.storage && navigator.storage.persist) {
+          try {
+            const isPersisted = await navigator.storage.persisted();
+            if (!isPersisted) {
+              const granted = await navigator.storage.persist();
+              if (granted) {
+                console.log('Persistent storage granted by browser.');
+              }
+            }
+          } catch (e) {
+            console.warn('Storage persist error:', e);
+          }
+        }
+      }
+
       // ==================== SECURITY & PASSWORD CONFIG ====================
       const SECURITY_STORAGE_KEY = 'wyyty_security_v1';
       let securityConfig = {
@@ -408,6 +426,67 @@
         return `${tier}仔 (${fmtPct(tierRates[tier] || 0)}佣)`;
       }
 
+      function getTierShortName(tier) {
+        if (tier === 4 || tier === '4' || tier === 'other') return '其他';
+        return `${tier}仔`;
+      }
+
+      // Reusable SVG Donut/Pie Chart Builder (圓形圖表)
+      function buildSvgPieChart(slices, centerTopLabel, centerMainVal, centerSubVal) {
+        const radius = 58;
+        const circumference = 2 * Math.PI * radius;
+        const total = slices.reduce((acc, item) => acc + (Number(item.value) || 0), 0);
+
+        let cumulativePct = 0;
+        let circlesHtml = '';
+
+        if (total <= 0) {
+          circlesHtml = `<circle r="${radius}" cx="90" cy="90" fill="transparent" stroke="#e2e8e4" stroke-width="30" />`;
+        } else {
+          slices.forEach((sl) => {
+            const val = Number(sl.value) || 0;
+            if (val <= 0) return;
+            const pct = val / total;
+            const dashLen = pct * circumference;
+            const dashOffset = -cumulativePct * circumference;
+            cumulativePct += pct;
+            circlesHtml += `<circle r="${radius}" cx="90" cy="90" fill="transparent" stroke="${sl.color}" stroke-width="30" stroke-dasharray="${dashLen.toFixed(2)} ${circumference.toFixed(2)}" stroke-dashoffset="${dashOffset.toFixed(2)}" transform="rotate(-90 90 90)" />`;
+          });
+        }
+
+        const legendHtml = slices.map((sl) => {
+          const pctStr = total > 0 ? (((Number(sl.value) || 0) / total) * 100).toFixed(1) + '%' : '0.0%';
+          return `
+            <div class="pie-legend-item">
+              <div class="pie-legend-left">
+                <span class="pie-dot" style="background:${sl.color};"></span>
+                <span>${sl.label}</span>
+              </div>
+              <div class="pie-legend-right">
+                ${sl.rightText || pctStr}
+              </div>
+            </div>
+          `;
+        }).join('');
+
+        return `
+          <div class="pie-chart-container">
+            <div class="pie-svg-wrap">
+              <svg viewBox="0 0 180 180" width="168" height="168" style="overflow:visible;">
+                ${circlesHtml}
+                <circle r="43" cx="90" cy="90" fill="#ffffff" />
+                <text x="90" y="76" text-anchor="middle" font-size="10" font-weight="600" fill="#5c6e66">${centerTopLabel}</text>
+                <text x="90" y="95" text-anchor="middle" font-size="13" font-weight="800" fill="#1e463a">${centerMainVal}</text>
+                <text x="90" y="111" text-anchor="middle" font-size="10" font-weight="700" fill="#b5832a">${centerSubVal}</text>
+              </svg>
+            </div>
+            <div class="pie-legend-list">
+              ${legendHtml}
+            </div>
+          </div>
+        `;
+      }
+
       function loadCustomRates() {
         try {
           const raw = localStorage.getItem(RATES_STORAGE_KEY);
@@ -460,8 +539,6 @@
         document.getElementById('multiBadgeRate3').textContent = `${p3}% 佣金`;
 
         // Direct boxes
-        document.getElementById('directBoxesHeaderTitle').textContent =
-          `1仔(${p1}%佣) / 2仔(${p2}%佣) / 3仔(${p3}%佣) 專屬輸入欄（可直接於下方任一欄輸入或與上方連動）`;
         document.getElementById('directTitle1').textContent = `1仔 (${p1}%佣) 輸入欄`;
         document.getElementById('directTitle2').textContent = `2仔 (${p2}%佣) 輸入欄`;
         document.getElementById('directTitle3').textContent = `3仔 (${p3}%佣) 輸入欄`;
@@ -511,6 +588,369 @@
         showToast(`✅ 已更新默認佣金率為：1仔 ${fmtPct(n1)} / 2仔 ${fmtPct(n2)} / 3仔 ${fmtPct(n3)}${recalcExisting ? '（已同步重算現有紀錄）' : ''}`);
       }
 
+      
+      // ==================== FIREBASE CONFIG & CLOUD SYNC ====================
+      const DEFAULT_FIREBASE_API_KEY = "AIzaSyCyIpVK2ePcoRqPlV_PngW8Hx7CiqC5N58";
+      const FIREBASE_CONFIG_STORAGE_KEY = 'wyyty_firebase_custom_config_v1';
+
+      function getActiveFirebaseConfig() {
+        let key = DEFAULT_FIREBASE_API_KEY;
+        try {
+          const saved = localStorage.getItem(FIREBASE_CONFIG_STORAGE_KEY);
+          if (saved) {
+            const parsed = JSON.parse(saved);
+            if (parsed && parsed.apiKey) key = parsed.apiKey.trim();
+          }
+        } catch (e) {}
+
+        return {
+          apiKey: key,
+          authDomain: "wyyty-5ad95.firebaseapp.com",
+          projectId: "wyyty-5ad95",
+          storageBucket: "wyyty-5ad95.firebasestorage.app",
+          messagingSenderId: "374347933275",
+          appId: "1:374347933275:web:e3b31329fdeecba100c17e",
+          measurementId: "G-T4X77WZVBQ"
+        };
+      }
+
+      let FIREBASE_CONFIG = getActiveFirebaseConfig();
+
+      let firebaseApp = null;
+      let firebaseAuth = null;
+      let firebaseDb = null;
+      let currentFirebaseUser = null;
+      let isCloudSyncing = false;
+      let authModalMode = 'login'; // 'login' | 'register'
+
+      
+      // ==================== FORMAL CUSTOM EMAIL ACTION HANDLER ====================
+      function checkAndHandleUrlEmailActions() {
+        if (!firebaseAuth) return;
+        const urlParams = new URLSearchParams(window.location.search);
+        const mode = urlParams.get('mode');
+        const oobCode = urlParams.get('oobCode');
+
+        if (!mode || !oobCode) return;
+
+        const actionModal = document.getElementById('customActionModal');
+        const stateProcessing = document.getElementById('actionStateProcessing');
+        const stateVerifySuccess = document.getElementById('actionStateVerifySuccess');
+        const stateResetPassword = document.getElementById('actionStateResetPassword');
+        const stateResetSuccess = document.getElementById('actionStateResetSuccess');
+        const stateError = document.getElementById('actionStateError');
+        const errorTitle = document.getElementById('actionErrorTitle');
+        const errorDesc = document.getElementById('actionErrorDesc');
+
+        function showActionSubState(targetState) {
+          [stateProcessing, stateVerifySuccess, stateResetPassword, stateResetSuccess, stateError].forEach(el => {
+            if (el) el.style.display = 'none';
+          });
+          if (targetState) targetState.style.display = 'block';
+        }
+
+        if (actionModal) actionModal.classList.add('open');
+        showActionSubState(stateProcessing);
+
+        if (mode === 'verifyEmail') {
+          firebaseAuth.applyActionCode(oobCode)
+            .then(async () => {
+              showActionSubState(stateVerifySuccess);
+              if (firebaseAuth.currentUser) {
+                await firebaseAuth.currentUser.reload().catch(() => {});
+              }
+              if (currentFirebaseUser) {
+                await currentFirebaseUser.reload().catch(() => {});
+                updateUserAuthUI();
+              }
+              // Clean URL query params without reloading
+              window.history.replaceState({}, document.title, window.location.pathname);
+            })
+            .catch((err) => {
+              console.warn('verifyEmail error:', err);
+              showActionSubState(stateError);
+              if (errorTitle) errorTitle.textContent = '電子郵件驗證連結已失效';
+              if (errorDesc) errorDesc.textContent = '此驗證連結可能已過期或已完成驗證。請在應用程式中重新發送驗證信。';
+            });
+        } else if (mode === 'resetPassword') {
+          firebaseAuth.verifyPasswordResetCode(oobCode)
+            .then((email) => {
+              showActionSubState(stateResetPassword);
+              const emailTxt = document.getElementById('actionTargetEmailText');
+              if (emailTxt) emailTxt.textContent = `帳號：${email}`;
+
+              const resetForm = document.getElementById('actionNewPasswordForm');
+              if (resetForm) {
+                resetForm.onsubmit = async (e) => {
+                  e.preventDefault();
+                  const p1 = (document.getElementById('actionNewPwdInput').value || '').trim();
+                  const p2 = (document.getElementById('actionConfirmNewPwdInput').value || '').trim();
+                  const errEl = document.getElementById('actionResetErrorMsg');
+                  const btnSubmit = document.getElementById('btnSubmitNewPassword');
+
+                  if (p1.length < 6) {
+                    if (errEl) errEl.textContent = '⚠️ 密碼長度至少需要 6 位字符！';
+                    return;
+                  }
+                  if (p1 !== p2) {
+                    if (errEl) errEl.textContent = '⚠️ 兩次輸入的密碼不一致！';
+                    return;
+                  }
+
+                  btnSubmit.disabled = true;
+                  btnSubmit.textContent = '正在更新密碼...';
+                  try {
+                    await firebaseAuth.confirmPasswordReset(oobCode, p1);
+                    showActionSubState(stateResetSuccess);
+                    window.history.replaceState({}, document.title, window.location.pathname);
+                  } catch (err) {
+                    console.warn('confirmPasswordReset error:', err);
+                    if (errEl) errEl.textContent = '❌ 密碼重設失敗：' + (err.message || '請重新申請救援信');
+                  } finally {
+                    btnSubmit.disabled = false;
+                    btnSubmit.textContent = '確認設定新密碼';
+                  }
+                };
+              }
+            })
+            .catch((err) => {
+              console.warn('verifyPasswordResetCode error:', err);
+              showActionSubState(stateError);
+              if (errorTitle) errorTitle.textContent = '密碼重設連結已失效';
+              if (errorDesc) errorDesc.textContent = '此密碼重設連結已逾時或已被使用。請返回應用程式重新發送密碼救援信。';
+            });
+        } else if (mode === 'recoverEmail') {
+          firebaseAuth.checkActionCode(oobCode)
+            .then(() => firebaseAuth.applyActionCode(oobCode))
+            .then(() => {
+              showActionSubState(stateVerifySuccess);
+              const titleEl = document.getElementById('customActionModalTitle');
+              if (titleEl) titleEl.textContent = '電子郵件已成功恢復！';
+              window.history.replaceState({}, document.title, window.location.pathname);
+            })
+            .catch(() => showActionSubState(stateError));
+        }
+
+        // Close and navigation buttons
+        const closeBtn = document.getElementById('btnCloseCustomActionModal');
+        const btnGoHome = document.getElementById('btnActionGoHome');
+        const btnGoLogin = document.getElementById('btnActionGoLogin');
+        const btnCloseErr = document.getElementById('btnActionCloseModal');
+
+        const doClose = () => {
+          if (actionModal) actionModal.classList.remove('open');
+        };
+
+        if (closeBtn) closeBtn.onclick = doClose;
+        if (btnCloseErr) btnCloseErr.onclick = doClose;
+        if (btnGoHome) btnGoHome.onclick = doClose;
+        if (btnGoLogin) {
+          btnGoLogin.onclick = () => {
+            doClose();
+            openAuthModal('login');
+          };
+        }
+      }
+
+      function initFirebaseServices() {
+        if (typeof firebase === 'undefined') {
+          console.warn('Firebase SDK not loaded, running in pure local mode.');
+          updateUserAuthUI();
+          return;
+        }
+        try {
+          if (!firebase.apps.length) {
+            firebaseApp = firebase.initializeApp(FIREBASE_CONFIG);
+          } else {
+            firebaseApp = firebase.app();
+          }
+          firebaseAuth = firebase.auth();
+          firebaseDb = firebase.firestore();
+
+          // Force Firebase to send all verification and password reset emails in Traditional Chinese (繁體中文)
+          try {
+            firebaseAuth.languageCode = 'zh_TW';
+          } catch (e) {
+            try { firebaseAuth.useDeviceLanguage(); } catch (ex) {}
+          }
+
+          // Enable offline IndexedDB persistence for Cloud Firestore
+          firebaseDb.enablePersistence({ synchronizeTabs: true }).catch((err) => {
+            console.warn('Firestore persistence notice:', err.code);
+          });
+
+
+
+          // Listen for auth state changes
+          firebaseAuth.onAuthStateChanged((user) => {
+            if (isPendingRegistrationFlow) {
+              // User is currently in the middle of verifying email inside the Register Modal
+              return;
+            }
+            currentFirebaseUser = user;
+            updateUserAuthUI();
+            if (user) {
+              loadUserOrdersFromCloud(user.uid);
+            } else {
+              loadOrders();
+              renderRecentOrders();
+              renderCalendar();
+              renderAnalytics();
+            }
+          });
+        } catch (e) {
+          console.warn('Firebase init error:', e);
+          updateUserAuthUI();
+        }
+      }
+
+      function updateUserAuthUI() {
+        const headerName = document.getElementById('headerUserName');
+        const headerAvatar = document.getElementById('headerUserAvatar');
+        const headerSyncPill = document.getElementById('headerSyncStatus');
+        const loggedInBox = document.getElementById('authLoggedInBox');
+        const loggedOutBox = document.getElementById('authLoggedOutBox');
+        const labelEmail = document.getElementById('labelLoggedInEmail');
+        const cardSyncPill = document.getElementById('cardSyncPill');
+
+        if (currentFirebaseUser) {
+          const email = currentFirebaseUser.email || '已登入用戶';
+          const dispName = currentFirebaseUser.displayName || '';
+          const displayLabel = dispName ? `${dispName} (${email.replace('@wyyty.app', '')})` : email.replace('@wyyty.app', '');
+          const initial = (dispName || email).charAt(0).toUpperCase();
+          const isOtpVerified = localStorage.getItem('wyyty_otp_verified_' + currentFirebaseUser.uid) === '1';
+          const isVerified = Boolean(currentFirebaseUser.emailVerified) || isOtpVerified;
+
+          if (headerName) headerName.textContent = dispName || email.replace('@wyyty.app', '');
+          if (headerAvatar) headerAvatar.textContent = initial;
+          if (headerSyncPill) {
+            headerSyncPill.style.display = 'inline-flex';
+            headerSyncPill.className = 'cloud-sync-pill synced';
+            headerSyncPill.textContent = isVerified ? '☁️ 雲端已同步' : '☁️ 雲端同步中 (未驗證)';
+          }
+          if (loggedInBox) loggedInBox.style.display = 'block';
+          if (loggedOutBox) loggedOutBox.style.display = 'none';
+          if (labelEmail) labelEmail.textContent = displayLabel;
+          if (cardSyncPill) {
+            cardSyncPill.className = 'cloud-sync-pill synced';
+            cardSyncPill.textContent = '☁️ 雲端連線正常';
+          }
+
+          const verifiedBadge = document.getElementById('labelEmailVerifiedBadge');
+          const unverifiedBox = document.getElementById('unverifiedEmailAlertBox');
+          if (verifiedBadge) {
+            verifiedBadge.className = isVerified ? 'tier-badge t1' : 'tier-badge t3';
+            verifiedBadge.textContent = isVerified ? '✅ 信箱已驗證' : '⚠️ 信箱未驗證';
+          }
+          if (unverifiedBox) {
+            unverifiedBox.style.display = isVerified ? 'none' : 'block';
+          }
+        } else {
+          if (headerName) headerName.textContent = '未登入 (點此登入)';
+          if (headerAvatar) headerAvatar.textContent = '👤';
+          if (headerSyncPill) headerSyncPill.style.display = 'none';
+          if (loggedInBox) loggedInBox.style.display = 'none';
+          if (loggedOutBox) loggedOutBox.style.display = 'flex';
+          if (cardSyncPill) {
+            cardSyncPill.className = 'cloud-sync-pill';
+            cardSyncPill.textContent = '📱 本機離線模式';
+          }
+        }
+      }
+
+      function getStorageKeyForUser() {
+        if (currentFirebaseUser && currentFirebaseUser.uid) {
+          return 'wyyty_orders_' + currentFirebaseUser.uid;
+        }
+        return 'tcm_orders_records_v2';
+      }
+
+      async function syncOrdersToCloud(uid) {
+        if (!firebaseDb || !uid || isCloudSyncing) return;
+        isCloudSyncing = true;
+        const headerSyncPill = document.getElementById('headerSyncStatus');
+        if (headerSyncPill) {
+          headerSyncPill.className = 'cloud-sync-pill syncing';
+          headerSyncPill.textContent = '☁️ 同步中...';
+        }
+
+        try {
+          const userDocRef = firebaseDb.collection('users').doc(uid);
+          await userDocRef.set({
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            username: (currentFirebaseUser && currentFirebaseUser.displayName) || '',
+            email: (currentFirebaseUser && currentFirebaseUser.email) || '',
+            tierRates: tierRates,
+            orderCount: orders.length,
+            orders: orders
+          }, { merge: true });
+
+          if (headerSyncPill) {
+            headerSyncPill.className = 'cloud-sync-pill synced';
+            headerSyncPill.textContent = '☁️ 已同步';
+          }
+          const syncTimeEl = document.getElementById('labelUserSyncTime');
+          if (syncTimeEl) {
+            syncTimeEl.textContent = `✅ 剛才已自動備份同步至 Google 雲端 (${getNowParts().timeStr})`;
+          }
+        } catch (err) {
+          console.warn('Cloud sync error:', err);
+          if (headerSyncPill) {
+            headerSyncPill.className = 'cloud-sync-pill';
+            headerSyncPill.textContent = '☁️ 離線快取中';
+          }
+        } finally {
+          isCloudSyncing = false;
+        }
+      }
+
+      async function loadUserOrdersFromCloud(uid) {
+        if (!firebaseDb || !uid) return;
+        const headerSyncPill = document.getElementById('headerSyncStatus');
+        if (headerSyncPill) {
+          headerSyncPill.className = 'cloud-sync-pill syncing';
+          headerSyncPill.textContent = '☁️ 讀取雲端...';
+        }
+
+        try {
+          const userDoc = await firebaseDb.collection('users').doc(uid).get();
+          if (userDoc.exists) {
+            const data = userDoc.data();
+            if (data && data.username && currentFirebaseUser && currentFirebaseUser.email) {
+              saveLocalUsernameMapping(data.username, currentFirebaseUser.email);
+            }
+            if (data && Array.isArray(data.orders)) {
+              orders = data.orders.map(normalizeOrderRecord);
+              if (data.tierRates) {
+                tierRates = {
+                  1: Number(data.tierRates[1]) || 0.20,
+                  2: Number(data.tierRates[2]) || 0.15,
+                  3: Number(data.tierRates[3]) || 0.07
+                };
+                saveCustomRates();
+                updateAllRateLabelsInUI();
+              }
+              saveOrders();
+            }
+          } else {
+            // First time login for this user: initialize empty or migrate local
+            loadOrders();
+            await syncOrdersToCloud(uid);
+          }
+        } catch (err) {
+          console.warn('Cloud read notice:', err);
+          loadOrders();
+        } finally {
+          if (headerSyncPill) {
+            headerSyncPill.className = 'cloud-sync-pill synced';
+            headerSyncPill.textContent = '☁️ 已同步';
+          }
+          renderRecentOrders();
+          renderCalendar();
+          renderAnalytics();
+        }
+      }
+
       // ==================== STORAGE & DATA MODEL HELPERS ====================
       function normalizeOrderRecord(o) {
         if (typeof o.originalAmount !== 'number') {
@@ -550,8 +990,9 @@
       }
 
       function loadOrders() {
+        const key = getStorageKeyForUser();
         try {
-          const raw = localStorage.getItem(STORAGE_KEY) || localStorage.getItem('tcm_orders_records_v1');
+          const raw = localStorage.getItem(key) || (key === 'tcm_orders_records_v2' ? localStorage.getItem('tcm_orders_records_v1') : null);
           if (raw) {
             const parsed = JSON.parse(raw);
             if (Array.isArray(parsed)) {
@@ -563,14 +1004,18 @@
           console.warn('LocalStorage read fallback:', e);
         }
         orders = [];
-        saveOrders();
       }
 
       function saveOrders() {
+        const key = getStorageKeyForUser();
         try {
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(orders));
+          localStorage.setItem(key, JSON.stringify(orders));
         } catch (e) {
           console.warn('LocalStorage write fallback:', e);
+        }
+        // Auto-sync to Firebase Cloud in background if logged in!
+        if (currentFirebaseUser && currentFirebaseUser.uid) {
+          syncOrdersToCloud(currentFirebaseUser.uid);
         }
       }
 
@@ -795,6 +1240,878 @@
         const el = document.getElementById('liveClockDisplay');
         if (el) {
           el.textContent = `現在時間：${parts.fullStr}`;
+        }
+      }
+
+      // ==================== USERNAME <-> EMAIL MAPPING & REAL EMAIL VERIFICATION ====================
+      const USERNAME_MAP_STORAGE_KEY = 'wyyty_username_email_map_v1';
+      let isPendingRegistrationFlow = false;
+      let regOtpState = {
+        email: '',
+        expiresAt: 0,
+        cooldownSec: 0,
+        verified: false,
+        stagedTempPwd: '',
+        timerId: null,
+        pollTimerId: null
+      };
+
+      function getDeterministicStagingPassword(email) {
+        const clean = (email || '').trim().toLowerCase();
+        let hash = 0;
+        for (let i = 0; i < clean.length; i++) {
+          hash = ((hash << 5) - hash) + clean.charCodeAt(i);
+          hash |= 0;
+        }
+        return 'WyytyVrf#' + Math.abs(hash) + '_99';
+      }
+
+      function setRegEmailVerifyBannerState(state, emailAddr, extraTimeStr) {
+        const box = document.getElementById('regEmailVerifyNotifyBox');
+        const txt = document.getElementById('regVerifyStatusText');
+        const btnCheck = document.getElementById('btnManualCheckRegVerify');
+        if (!box || !txt) return;
+
+        if (state === 'verified') {
+          box.style.background = 'var(--tier1-bg)';
+          box.style.borderColor = '#34d399';
+          box.style.color = 'var(--tier1)';
+          txt.innerHTML = `<strong style="display:block; color:var(--tier1); font-size:0.88rem;">✅ 電郵地址已認證</strong><span style="font-size:0.76rem;"><strong>${emailAddr || regOtpState.email}</strong> 已完成電郵驗證！請填寫下方密碼並點擊「立即註冊並建立帳本」。</span>`;
+          if (btnCheck) btnCheck.style.display = 'none';
+        } else if (state === 'pending') {
+          box.style.background = '#fffbeb';
+          box.style.borderColor = '#fde68a';
+          box.style.color = '#92400e';
+          txt.innerHTML = `<strong style="display:block; color:#b45309; font-size:0.86rem;">⏳ 電郵地址待認證（驗證電郵已發送）</strong><span style="font-size:0.76rem;">已發送至 <strong>${emailAddr || regOtpState.email}</strong>${extraTimeStr ? '（有效至 ' + extraTimeStr + '）' : ''}。請前往信箱（若未見請檢查「垃圾郵件」匣）點擊信中認證連結，完成後將自動變更為「已認證」。</span>`;
+          if (btnCheck) btnCheck.style.display = 'inline-flex';
+        } else if (state === 'expired') {
+          box.style.background = 'var(--danger-bg)';
+          box.style.borderColor = '#f87171';
+          box.style.color = 'var(--danger)';
+          txt.innerHTML = `<strong style="display:block; color:var(--danger); font-size:0.86rem;">⚠️ 電郵地址待認證（驗證連結已逾時）</strong><span style="font-size:0.76rem;">驗證電郵已超過有效時間，請重新點擊「發送驗證電郵」。</span>`;
+          if (btnCheck) btnCheck.style.display = 'none';
+        } else {
+          box.style.background = 'var(--bg-subtle)';
+          box.style.borderColor = 'var(--border)';
+          box.style.color = 'var(--text-muted)';
+          txt.innerHTML = `<strong style="display:block; color:var(--text-main);">⏳ 電郵地址待認證</strong><span style="font-size:0.76rem;">請輸入電子郵件地址並點擊「發送驗證電郵」進行認證</span>`;
+          if (btnCheck) btnCheck.style.display = 'none';
+        }
+      }
+
+      function stopRegVerificationPolling() {
+        if (regOtpState.pollTimerId) {
+          clearInterval(regOtpState.pollTimerId);
+          regOtpState.pollTimerId = null;
+        }
+      }
+
+      async function checkPendingEmailVerifiedStatus(isManualClick) {
+        if (!isPendingRegistrationFlow || !firebaseAuth || !firebaseAuth.currentUser) return false;
+        if (regOtpState.expiresAt && Date.now() > regOtpState.expiresAt) {
+          stopRegVerificationPolling();
+          setRegEmailVerifyBannerState('expired', regOtpState.email);
+          return false;
+        }
+        try {
+          await firebaseAuth.currentUser.reload();
+          if (firebaseAuth.currentUser && firebaseAuth.currentUser.emailVerified) {
+            regOtpState.verified = true;
+            stopRegVerificationPolling();
+            setRegEmailVerifyBannerState('verified', regOtpState.email);
+            const authErr = document.getElementById('authErrorMsg');
+            if (authErr) authErr.textContent = '';
+            showToast('✅ 電郵地址已認證成功！');
+            return true;
+          } else if (isManualClick) {
+            showToast('⏳ 尚未偵測到點擊認證連結，請先至信箱點擊驗證電郵中的連結！');
+          }
+        } catch (e) {
+          console.warn('Poll reload notice:', e);
+        }
+        return false;
+      }
+
+      function getLocalUsernameMap() {
+        const defaults = {
+          '314': 'tsechiwai314jp@gmail.com',
+          'tsechiwai314jp': 'tsechiwai314jp@gmail.com',
+          'ty16168': 'ty16168@gmail.com',
+          'yyty16168': 'yyty16168@gmail.com'
+        };
+        try {
+          const raw = localStorage.getItem(USERNAME_MAP_STORAGE_KEY);
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            if (parsed && typeof parsed === 'object') {
+              return Object.assign({}, defaults, parsed);
+            }
+          }
+        } catch (e) {}
+        return defaults;
+      }
+
+      function saveLocalUsernameMapping(username, email) {
+        if (!email) return;
+        const cleanEmail = email.trim().toLowerCase();
+        try {
+          const map = getLocalUsernameMap();
+          if (username && username.trim()) {
+            map[username.trim().toLowerCase()] = cleanEmail;
+          }
+          // Also index the email prefix before '@' so prefix login works too
+          const prefix = cleanEmail.split('@')[0];
+          if (prefix && !map[prefix]) {
+            map[prefix] = cleanEmail;
+          }
+          localStorage.setItem(USERNAME_MAP_STORAGE_KEY, JSON.stringify(map));
+        } catch (e) {}
+      }
+
+      async function saveCloudUsernameMapping(username, email, uid) {
+        saveLocalUsernameMapping(username, email);
+        const key = (username || '').trim().toLowerCase();
+        const cleanEmail = (email || '').trim().toLowerCase();
+        if (!key || !cleanEmail) return;
+
+        // 1. Save to Firestore /users/{uid} (allowed by per-user Firestore rules)
+        if (firebaseDb && uid) {
+          try {
+            await firebaseDb.collection('users').doc(uid).set({
+              username: username.trim(),
+              email: cleanEmail,
+              updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+            }, { merge: true });
+          } catch (e) {}
+        }
+        // 2. Save to Firestore /usernames/{key}
+        if (firebaseDb) {
+          try {
+            await firebaseDb.collection('usernames').doc(key).set({
+              username: username.trim(),
+              email: cleanEmail,
+              uid: uid || '',
+              updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+            }, { merge: true });
+          } catch (e) {}
+        }
+        // 3. Also mirror to Realtime Database if available for cross-device username lookup
+        try {
+          fetch(`https://wyyty-5ad95-default-rtdb.firebaseio.com/usernames/${encodeURIComponent(key)}.json`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username: username.trim(), email: cleanEmail, uid: uid || '' })
+          }).catch(() => {});
+        } catch (e) {}
+      }
+
+      async function resolveLoginAccountToEmail(rawInput) {
+        const trimmed = (rawInput || '').trim();
+        if (!trimmed) return '';
+        if (trimmed.includes('@')) {
+          return trimmed.toLowerCase();
+        }
+        const key = trimmed.toLowerCase();
+
+        // 1. Check localStorage + built-in map first (exact match)
+        const localMap = getLocalUsernameMap();
+        if (localMap[key]) {
+          return localMap[key];
+        }
+
+        // 2. Check partial prefix match against known emails on this device
+        const allKnownEmails = Object.values(localMap);
+        for (let i = 0; i < allKnownEmails.length; i++) {
+          const em = allKnownEmails[i];
+          const prefix = (em || '').split('@')[0];
+          if (prefix === key || (key.length >= 3 && prefix.includes(key))) {
+            saveLocalUsernameMapping(key, em);
+            return em;
+          }
+        }
+
+        // 3. Check Realtime Database mirror
+        try {
+          const resp = await fetch(`https://wyyty-5ad95-default-rtdb.firebaseio.com/usernames/${encodeURIComponent(key)}.json`);
+          if (resp && resp.ok) {
+            const rtData = await resp.json();
+            if (rtData && rtData.email) {
+              saveLocalUsernameMapping(key, rtData.email);
+              return rtData.email;
+            }
+          }
+        } catch (e) {}
+
+        // 4. Check Firestore 'usernames' collection
+        if (firebaseDb) {
+          try {
+            const doc = await firebaseDb.collection('usernames').doc(key).get();
+            if (doc.exists && doc.data() && doc.data().email) {
+              const foundEmail = doc.data().email;
+              saveLocalUsernameMapping(key, foundEmail);
+              return foundEmail;
+            }
+          } catch (e) {}
+        }
+
+        // 5. Fallback for legacy username-only accounts
+        const cleanUsername = key.replace(/[^a-z0-9_-]/g, '');
+        return `${cleanUsername || key}@wyyty.app`;
+      }
+
+      function openAuthModal(mode) {
+        authModalMode = mode || 'login';
+        const authModal = document.getElementById('userAuthModal');
+        const tabLogin = document.getElementById('tabAuthLogin');
+        const tabRegister = document.getElementById('tabAuthRegister');
+        const authForm = document.getElementById('firebaseAuthForm');
+        const forgotPanel = document.getElementById('forgotPasswordPanel');
+        const loginAccountGroup = document.getElementById('loginAccountGroup');
+        const registerExtraWrap = document.getElementById('registerExtraFieldsWrap');
+        const confirmWrap = document.getElementById('authConfirmPasswordWrap');
+        const btnShowForgot = document.getElementById('btnShowForgotPwd');
+        const btnSubmitAuth = document.getElementById('btnSubmitAuth');
+        const authTitle = document.getElementById('authModalTitle');
+        const authHint = document.getElementById('authHintText');
+        const authErr = document.getElementById('authErrorMsg');
+
+        if (authErr) authErr.textContent = '';
+        if (authForm) authForm.style.display = 'block';
+        if (forgotPanel) forgotPanel.style.display = 'none';
+
+        if (authModalMode === 'login') {
+          isPendingRegistrationFlow = false;
+          stopRegVerificationPolling();
+          if (tabLogin) tabLogin.classList.add('active');
+          if (tabRegister) tabRegister.classList.remove('active');
+          if (loginAccountGroup) loginAccountGroup.style.display = 'block';
+          if (registerExtraWrap) registerExtraWrap.style.display = 'none';
+          if (confirmWrap) confirmWrap.style.display = 'none';
+          if (btnShowForgot) btnShowForgot.style.display = 'inline-block';
+          if (authTitle) authTitle.textContent = '👤 登入個人專屬帳號';
+          if (btnSubmitAuth) btnSubmitAuth.textContent = '登入帳號';
+          if (authHint) authHint.textContent = '請使用您的電郵地址與密碼登入，系統將自動載入您的專屬開單紀錄。';
+        } else {
+          if (tabRegister) tabRegister.classList.add('active');
+          if (tabLogin) tabLogin.classList.remove('active');
+          if (loginAccountGroup) loginAccountGroup.style.display = 'none';
+          if (registerExtraWrap) registerExtraWrap.style.display = 'block';
+          if (confirmWrap) confirmWrap.style.display = 'block';
+          if (btnShowForgot) btnShowForgot.style.display = 'none';
+          if (authTitle) authTitle.textContent = '✨ 註冊新用戶帳號';
+          if (btnSubmitAuth) btnSubmitAuth.textContent = '立即註冊並建立帳本';
+          if (authHint) authHint.textContent = '請填寫帳號名稱及真實電子郵件地址，並點擊「發送驗證電郵」完成信箱核實。';
+          if (!regOtpState.email) {
+            setRegEmailVerifyBannerState('idle');
+          }
+        }
+
+        if (authModal) authModal.classList.add('open');
+        setTimeout(() => {
+          if (authModalMode === 'login') {
+            const el = document.getElementById('authEmailInput');
+            if (el) el.focus();
+          } else {
+            const el = document.getElementById('regUsernameInput');
+            if (el) el.focus();
+          }
+        }, 60);
+      }
+
+      async function closeAuthModal() {
+        const authModal = document.getElementById('userAuthModal');
+        if (authModal) authModal.classList.remove('open');
+        stopRegVerificationPolling();
+        if (isPendingRegistrationFlow) {
+          isPendingRegistrationFlow = false;
+          // Save any typed username <-> email mapping before closing
+          const typedUser = (document.getElementById('regUsernameInput').value || '').trim();
+          const typedEmail = (document.getElementById('regEmailInput').value || '').trim().toLowerCase();
+          if (typedUser && typedEmail && typedEmail.includes('@')) {
+            saveLocalUsernameMapping(typedUser, typedEmail);
+          }
+        }
+        regOtpState.email = '';
+        regOtpState.verified = false;
+        setRegEmailVerifyBannerState('idle');
+        ['authEmailInput', 'regUsernameInput', 'regEmailInput', 'authPasswordInput', 'authConfirmPasswordInput'].forEach(id => {
+          const el = document.getElementById(id);
+          if (el) el.value = '';
+        });
+        const authErr = document.getElementById('authErrorMsg');
+        if (authErr) authErr.textContent = '';
+      }
+
+      function bindAuthEvents() {
+        const authModal = document.getElementById('userAuthModal');
+        const btnAuthBadge = document.getElementById('btnUserAuthBadge');
+        const btnOpenFromSettings = document.getElementById('btnOpenAuthModalFromSettings');
+        const btnCloseAuth = document.getElementById('btnCloseAuthModal');
+        const tabLogin = document.getElementById('tabAuthLogin');
+        const tabRegister = document.getElementById('tabAuthRegister');
+        const authForm = document.getElementById('firebaseAuthForm');
+        const btnSubmitAuth = document.getElementById('btnSubmitAuth');
+        const authTitle = document.getElementById('authModalTitle');
+        const authErr = document.getElementById('authErrorMsg');
+
+        if (btnAuthBadge) {
+          btnAuthBadge.addEventListener('click', () => {
+            if (currentFirebaseUser) {
+              switchView('backup');
+              const card = document.getElementById('firebaseSyncCard');
+              if (card) card.scrollIntoView({ behavior: 'smooth' });
+            } else {
+              openAuthModal('login');
+            }
+          });
+        }
+
+        if (btnOpenFromSettings) {
+          btnOpenFromSettings.addEventListener('click', () => openAuthModal('login'));
+        }
+
+        if (btnCloseAuth) btnCloseAuth.addEventListener('click', closeAuthModal);
+        if (authModal) {
+          authModal.addEventListener('click', (e) => {
+            if (e.target.id === 'userAuthModal') closeAuthModal();
+          });
+        }
+
+        if (tabLogin) tabLogin.addEventListener('click', () => openAuthModal('login'));
+        if (tabRegister) tabRegister.addEventListener('click', () => openAuthModal('register'));
+
+        // Send Real Verification Email via Firebase Auth & Update Status Notification Box
+        const btnSendOtp = document.getElementById('btnSendRegVerifyCode');
+        const btnManualCheck = document.getElementById('btnManualCheckRegVerify');
+        const regEmailInputEl = document.getElementById('regEmailInput');
+        const regUsernameInputEl = document.getElementById('regUsernameInput');
+
+        if (regUsernameInputEl && regEmailInputEl) {
+          const syncTypedPair = () => {
+            const u = regUsernameInputEl.value.trim();
+            const em = regEmailInputEl.value.trim().toLowerCase();
+            if (u && em && em.includes('@') && em.includes('.')) {
+              saveLocalUsernameMapping(u, em);
+            }
+          };
+          regUsernameInputEl.addEventListener('input', syncTypedPair);
+          regEmailInputEl.addEventListener('input', () => {
+            syncTypedPair();
+            const val = regEmailInputEl.value.trim().toLowerCase();
+            if (regOtpState.email && val !== regOtpState.email) {
+              regOtpState.verified = false;
+              setRegEmailVerifyBannerState('idle');
+            }
+          });
+        }
+
+        if (btnManualCheck) {
+          btnManualCheck.addEventListener('click', () => {
+            checkPendingEmailVerifiedStatus(true);
+          });
+        }
+
+        if (btnSendOtp) {
+          btnSendOtp.addEventListener('click', async () => {
+            if (!firebaseAuth) {
+              if (authErr) authErr.textContent = '⚠️ Firebase 認證服務尚未就緒，請檢查網絡連線';
+              return;
+            }
+            const regUsername = (document.getElementById('regUsernameInput').value || '').trim();
+            const regEmail = (document.getElementById('regEmailInput').value || '').trim().toLowerCase();
+            const enteredPwd = (document.getElementById('authPasswordInput').value || '').trim();
+
+            if (!regEmail || !regEmail.includes('@') || !regEmail.includes('.')) {
+              if (authErr) authErr.textContent = '⚠️ 請先輸入有效的電子郵件地址！';
+              document.getElementById('regEmailInput').focus();
+              return;
+            }
+            if (authErr) authErr.textContent = '';
+
+            // Immediately persist username <-> email mapping as soon as user clicks send verification email!
+            if (regUsername) {
+              saveLocalUsernameMapping(regUsername, regEmail);
+            } else {
+              saveLocalUsernameMapping('', regEmail);
+            }
+
+            btnSendOtp.disabled = true;
+            btnSendOtp.textContent = '發送中...';
+            isPendingRegistrationFlow = true;
+
+            try {
+              const deterministicPwd = getDeterministicStagingPassword(regEmail);
+              const initialPwdToUse = (enteredPwd && enteredPwd.length >= 6) ? enteredPwd : deterministicPwd;
+              regOtpState.email = regEmail;
+              regOtpState.stagedTempPwd = initialPwdToUse;
+              regOtpState.verified = false;
+
+              if (firebaseAuth.currentUser && firebaseAuth.currentUser.email && firebaseAuth.currentUser.email.toLowerCase() !== regEmail) {
+                await firebaseAuth.signOut().catch(() => {});
+              }
+
+              let targetUser = firebaseAuth.currentUser;
+              if (!targetUser || (targetUser.email || '').toLowerCase() !== regEmail) {
+                try {
+                  const cred = await firebaseAuth.createUserWithEmailAndPassword(regEmail, initialPwdToUse);
+                  targetUser = cred.user;
+                } catch (createErr) {
+                  if (createErr && createErr.code === 'auth/email-already-in-use') {
+                    // Try signing in with either enteredPwd or deterministicPwd
+                    let signedIn = null;
+                    const candidates = [initialPwdToUse, deterministicPwd];
+                    for (let i = 0; i < candidates.length; i++) {
+                      if (!candidates[i]) continue;
+                      try {
+                        signedIn = await firebaseAuth.signInWithEmailAndPassword(regEmail, candidates[i]);
+                        regOtpState.stagedTempPwd = candidates[i];
+                        break;
+                      } catch (e) {}
+                    }
+                    if (signedIn && signedIn.user) {
+                      targetUser = signedIn.user;
+                    } else {
+                      isPendingRegistrationFlow = false;
+                      btnSendOtp.disabled = false;
+                      btnSendOtp.textContent = '發送驗證電郵';
+                      if (authErr) authErr.textContent = '⚠️ 此電子郵件地址已註冊過帳號，請切換至「登入現有帳號」或使用忘記密碼找回！';
+                      return;
+                    }
+                  } else {
+                    throw createErr;
+                  }
+                }
+              }
+
+              if (targetUser && regUsername) {
+                await targetUser.updateProfile({ displayName: regUsername }).catch(() => {});
+                await saveCloudUsernameMapping(regUsername, regEmail, targetUser.uid);
+              }
+
+              await targetUser.reload().catch(() => {});
+              if (targetUser.emailVerified) {
+                regOtpState.verified = true;
+                regOtpState.expiresAt = Date.now() + 10 * 60 * 1000;
+                setRegEmailVerifyBannerState('verified', regEmail);
+                btnSendOtp.disabled = false;
+                btnSendOtp.textContent = '發送驗證電郵';
+                showToast('✅ 此電子郵件地址已完成認證！');
+                return;
+              }
+
+              // Send REAL verification email via Google Firebase
+              await targetUser.sendEmailVerification();
+
+              const expiresAt = Date.now() + 10 * 60 * 1000;
+              regOtpState.expiresAt = expiresAt;
+              regOtpState.cooldownSec = 60;
+
+              const expDate = new Date(expiresAt);
+              const expTimeStr = `${String(expDate.getHours()).padStart(2, '0')}:${String(expDate.getMinutes()).padStart(2, '0')}:${String(expDate.getSeconds()).padStart(2, '0')}`;
+
+              setRegEmailVerifyBannerState('pending', regEmail, expTimeStr);
+              showToast(`✉️ 已向 ${regEmail} 發送驗證電郵，請至信箱點擊認證連結！`);
+
+              stopRegVerificationPolling();
+              regOtpState.pollTimerId = setInterval(() => {
+                checkPendingEmailVerifiedStatus(false);
+              }, 2500);
+
+              if (regOtpState.timerId) clearInterval(regOtpState.timerId);
+              btnSendOtp.disabled = true;
+              btnSendOtp.textContent = '重新發送 (60s)';
+              regOtpState.timerId = setInterval(() => {
+                regOtpState.cooldownSec--;
+                if (regOtpState.cooldownSec <= 0) {
+                  clearInterval(regOtpState.timerId);
+                  regOtpState.timerId = null;
+                  btnSendOtp.disabled = false;
+                  btnSendOtp.textContent = '發送驗證電郵';
+                } else {
+                  btnSendOtp.textContent = `重新發送 (${regOtpState.cooldownSec}s)`;
+                }
+              }, 1000);
+            } catch (err) {
+              console.warn('Real email verification send error:', err);
+              btnSendOtp.disabled = false;
+              btnSendOtp.textContent = '發送驗證電郵';
+              let msg = err.message || '發送驗證電郵失敗';
+              if (err.code === 'auth/invalid-email') msg = '電子郵件地址格式不正確，請檢查後重試！';
+              else if (err.code === 'auth/too-many-requests') {
+                msg = '系統剛才已向此信箱發送過驗證電郵，請直接前往信箱（含垃圾郵件匣）點擊連結完成認證！';
+                setRegEmailVerifyBannerState('pending', regEmail, '');
+                stopRegVerificationPolling();
+                regOtpState.pollTimerId = setInterval(() => {
+                  checkPendingEmailVerifiedStatus(false);
+                }, 2500);
+              }
+              if (authErr) authErr.textContent = '❌ ' + msg;
+            }
+          });
+        }
+
+        // Automatically check pending email verification when user switches back from mail app
+        window.addEventListener('focus', () => {
+          if (isPendingRegistrationFlow) {
+            checkPendingEmailVerifiedStatus(false);
+          }
+        });
+
+        // Main Login / Register Submit Handler
+        if (authForm) {
+          authForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            if (!firebaseAuth) {
+              showToast('⚠️ Firebase 服務未連線，請檢查網絡');
+              return;
+            }
+            const password = (document.getElementById('authPasswordInput').value || '').trim();
+
+            if (authModalMode === 'register') {
+              const regUsername = (document.getElementById('regUsernameInput').value || '').trim();
+              const regEmail = (document.getElementById('regEmailInput').value || '').trim().toLowerCase();
+              const confirmPwd = (document.getElementById('authConfirmPasswordInput').value || '').trim();
+
+              if (!regUsername) {
+                if (authErr) authErr.textContent = '⚠️ 請填寫帳號名稱！';
+                document.getElementById('regUsernameInput').focus();
+                return;
+              }
+              if (regUsername.length < 2) {
+                if (authErr) authErr.textContent = '⚠️ 帳號名稱至少需要 2 個字符！';
+                document.getElementById('regUsernameInput').focus();
+                return;
+              }
+              if (!regEmail || !regEmail.includes('@') || !regEmail.includes('.')) {
+                if (authErr) authErr.textContent = '⚠️ 請填寫有效的電子郵件地址！';
+                document.getElementById('regEmailInput').focus();
+                return;
+              }
+              if (!regOtpState.email || regOtpState.email !== regEmail) {
+                if (authErr) authErr.textContent = '⚠️ 請先點擊「發送驗證電郵」完成電郵地址認證！';
+                return;
+              }
+              if (password.length < 6) {
+                if (authErr) authErr.textContent = '⚠️ 密碼長度至少需要 6 位字符！';
+                return;
+              }
+              if (password !== confirmPwd) {
+                if (authErr) authErr.textContent = '⚠️ 兩次輸入的密碼不一致！';
+                return;
+              }
+
+              saveLocalUsernameMapping(regUsername, regEmail);
+
+              btnSubmitAuth.disabled = true;
+              btnSubmitAuth.textContent = '正在核實電郵認證狀態...';
+
+              try {
+                if (!regOtpState.verified) {
+                  await checkPendingEmailVerifiedStatus(false);
+                }
+
+                if (!regOtpState.verified && (!firebaseAuth.currentUser || !firebaseAuth.currentUser.emailVerified)) {
+                  if (authErr) {
+                    authErr.textContent = '❌ 電郵地址尚處於「待認證」狀態！請先前往您的信箱（含垃圾郵件匣）點擊驗證電郵中的認證連結。';
+                  }
+                  btnSubmitAuth.disabled = false;
+                  btnSubmitAuth.textContent = '立即註冊並建立帳本';
+                  return;
+                }
+
+                const verifiedUser = firebaseAuth.currentUser;
+                // Re-authenticate if needed so updatePassword never fails
+                if (regOtpState.stagedTempPwd && regOtpState.stagedTempPwd !== password) {
+                  try {
+                    const cred = firebase.auth.EmailAuthProvider.credential(regEmail, regOtpState.stagedTempPwd);
+                    await verifiedUser.reauthenticateWithCredential(cred);
+                  } catch (reauthErr) {}
+                }
+                await verifiedUser.updatePassword(password);
+                await verifiedUser.updateProfile({ displayName: regUsername }).catch(() => {});
+                localStorage.setItem('wyyty_otp_verified_' + verifiedUser.uid, '1');
+                await saveCloudUsernameMapping(regUsername, regEmail, verifiedUser.uid);
+
+                stopRegVerificationPolling();
+                isPendingRegistrationFlow = false;
+                currentFirebaseUser = verifiedUser;
+                updateUserAuthUI();
+                await loadUserOrdersFromCloud(verifiedUser.uid);
+                closeAuthModal();
+                showToast(`🎉 註冊成功！已完成電郵認證並建立帳本：${regUsername}`);
+              } catch (err) {
+                console.warn('Finalize register error:', err);
+                let msg = err.message || '註冊失敗';
+                if (err.code === 'auth/weak-password') msg = '密碼強度不足，請輸入至少 6 位字符！';
+                if (authErr) authErr.textContent = '❌ ' + msg;
+              } finally {
+                btnSubmitAuth.disabled = false;
+                btnSubmitAuth.textContent = '立即註冊並建立帳本';
+              }
+            } else {
+              // Login Mode: Email Only (移除使用帳戶名稱登入的方式)
+              const targetEmail = (document.getElementById('authEmailInput').value || '').trim().toLowerCase();
+              if (!targetEmail || !password) {
+                if (authErr) authErr.textContent = '⚠️ 請填寫電郵地址及密碼！';
+                return;
+              }
+              if (!targetEmail.includes('@') || !targetEmail.includes('.')) {
+                if (authErr) authErr.textContent = '⚠️ 請輸入有效的電郵地址 (Email) 登入！';
+                document.getElementById('authEmailInput').focus();
+                return;
+              }
+
+              btnSubmitAuth.disabled = true;
+              btnSubmitAuth.textContent = '登入中...';
+              try {
+                isPendingRegistrationFlow = false;
+                let cred = null;
+                try {
+                  cred = await firebaseAuth.signInWithEmailAndPassword(targetEmail, password);
+                } catch (firstSignInErr) {
+                  // Fallback: if this account was created during "發送驗證電郵" with deterministic staging password
+                  // and the user is now logging in with their chosen password, finalize the password automatically
+                  const errStr = (firstSignInErr && (firstSignInErr.code || firstSignInErr.message)) || '';
+                  if (errStr.includes('invalid-login-credentials') || errStr.includes('invalid-credential') || errStr.includes('wrong-password')) {
+                    const stagedPwd = getDeterministicStagingPassword(targetEmail);
+                    try {
+                      const stagedCred = await firebaseAuth.signInWithEmailAndPassword(targetEmail, stagedPwd);
+                      if (stagedCred && stagedCred.user) {
+                        await stagedCred.user.updatePassword(password);
+                        cred = stagedCred;
+                      }
+                    } catch (fallbackErr) {
+                      throw firstSignInErr;
+                    }
+                  } else {
+                    throw firstSignInErr;
+                  }
+                }
+
+                currentFirebaseUser = cred.user;
+                updateUserAuthUI();
+                await loadUserOrdersFromCloud(cred.user.uid);
+                closeAuthModal();
+                const welcomeName = (cred.user && (cred.user.displayName || cred.user.email)) || targetEmail;
+                showToast(`✅ 登入成功！已載入專屬帳本：${welcomeName}`);
+              } catch (err) {
+                console.warn('Login error:', err);
+                let msg = err.message || '登入失敗';
+                const errCode = (err && err.code) || '';
+                if (
+                  errCode === 'auth/user-not-found' ||
+                  errCode === 'auth/wrong-password' ||
+                  errCode === 'auth/invalid-credential' ||
+                  errCode === 'auth/invalid-login-credentials' ||
+                  msg.includes('invalid-login-credentials')
+                ) {
+                  msg = '電郵地址或密碼不正確，請確認密碼或使用「🔑 忘記密碼找回」重設密碼！';
+                } else if (errCode === 'auth/invalid-email') {
+                  msg = '電郵地址格式不正確！';
+                } else if (errCode === 'auth/too-many-requests') {
+                  msg = '嘗試次數過多，請稍候片刻再試，或點擊「🔑 忘記密碼找回」重設密碼！';
+                }
+                if (authErr) authErr.textContent = '❌ ' + msg;
+              } finally {
+                btnSubmitAuth.disabled = false;
+                btnSubmitAuth.textContent = '登入帳號';
+              }
+            }
+          });
+        }
+
+        // Forgot Password (忘記密碼找回) Handlers
+        const btnShowForgot = document.getElementById('btnShowForgotPwd');
+        const forgotPanel = document.getElementById('forgotPasswordPanel');
+        const btnCancelForgot = document.getElementById('btnCancelForgotPwd');
+        const btnSendReset = document.getElementById('btnSendPasswordReset');
+        const resetStatusMsg = document.getElementById('resetPwdStatusMsg');
+
+        if (btnShowForgot && forgotPanel) {
+          btnShowForgot.addEventListener('click', () => {
+            authForm.style.display = 'none';
+            forgotPanel.style.display = 'block';
+            if (authTitle) authTitle.textContent = '🔑 忘記密碼找回';
+            const currInput = document.getElementById('authEmailInput').value.trim();
+            if (currInput) document.getElementById('resetPwdEmailInput').value = currInput;
+            if (resetStatusMsg) resetStatusMsg.textContent = '';
+          });
+        }
+
+        if (btnCancelForgot && forgotPanel) {
+          btnCancelForgot.addEventListener('click', () => {
+            forgotPanel.style.display = 'none';
+            authForm.style.display = 'block';
+            if (authTitle) authTitle.textContent = '👤 登入個人專屬帳號';
+          });
+        }
+
+        if (btnSendReset) {
+          btnSendReset.addEventListener('click', async () => {
+            if (!firebaseAuth) return;
+            const targetEmail = (document.getElementById('resetPwdEmailInput').value || '').trim().toLowerCase();
+            if (!targetEmail || !targetEmail.includes('@') || !targetEmail.includes('.')) {
+              if (resetStatusMsg) {
+                resetStatusMsg.style.color = 'var(--danger)';
+                resetStatusMsg.textContent = '⚠️ 請輸入有效的電郵地址 (Email)！';
+              }
+              return;
+            }
+            btnSendReset.disabled = true;
+            btnSendReset.textContent = '發送中...';
+            try {
+              await firebaseAuth.sendPasswordResetEmail(targetEmail);
+              if (resetStatusMsg) {
+                resetStatusMsg.style.color = 'var(--tier1)';
+                resetStatusMsg.textContent = `✅ 密碼找回重設信已發送至【${targetEmail}】！請前往信箱（含垃圾郵件匣）點擊連結設定新密碼。`;
+              }
+              showToast(`✉️ 密碼找回信已發送至 ${targetEmail}！`);
+            } catch (err) {
+              console.warn('Reset password error:', err);
+              let msg = err.message || '發送失敗';
+              if (err.code === 'auth/user-not-found') msg = '找不到該帳號或電子郵件註冊的紀錄，請確認輸入是否正確！';
+              if (err.code === 'auth/invalid-email') msg = '電子郵件格式不正確！';
+              if (resetStatusMsg) {
+                resetStatusMsg.style.color = 'var(--danger)';
+                resetStatusMsg.textContent = '❌ ' + msg;
+              }
+            } finally {
+              btnSendReset.disabled = false;
+              btnSendReset.textContent = '發送密碼找回信';
+            }
+          });
+        }
+
+        // Refresh verification status button
+        const btnRefreshVerify = document.getElementById('btnRefreshVerifyStatus');
+        if (btnRefreshVerify) {
+          btnRefreshVerify.addEventListener('click', async () => {
+            if (!currentFirebaseUser) return;
+            btnRefreshVerify.disabled = true;
+            btnRefreshVerify.textContent = '檢查中...';
+            try {
+              await currentFirebaseUser.reload();
+              currentFirebaseUser = firebaseAuth.currentUser;
+              updateUserAuthUI();
+              if (currentFirebaseUser.emailVerified) {
+                showToast('🎉 恭喜！電子郵件地址已成功完成驗證！');
+              } else {
+                showToast('ℹ️ 目前尚未偵測到驗證點擊，請先至信箱點擊驗證信中的連結後再試！');
+              }
+            } catch (e) {
+              console.warn('Reload user error:', e);
+            } finally {
+              btnRefreshVerify.disabled = false;
+              btnRefreshVerify.textContent = '🔄 重新整理驗證狀態';
+            }
+          });
+        }
+
+        window.addEventListener('focus', async () => {
+          if (currentFirebaseUser && !currentFirebaseUser.emailVerified && firebaseAuth) {
+            try {
+              await currentFirebaseUser.reload();
+              currentFirebaseUser = firebaseAuth.currentUser;
+              updateUserAuthUI();
+            } catch (e) {}
+          }
+        });
+
+        // Send Email Verification Button in Settings Card
+        const btnSendVerify = document.getElementById('btnSendVerificationEmail');
+        if (btnSendVerify) {
+          btnSendVerify.addEventListener('click', async () => {
+            if (!currentFirebaseUser) return;
+            btnSendVerify.disabled = true;
+            btnSendVerify.textContent = '發送中...';
+            try {
+              await currentFirebaseUser.sendEmailVerification();
+              showToast(`✉️ 驗證信已發送至 ${currentFirebaseUser.email}！請至信箱（含垃圾郵件）查收。`);
+            } catch (err) {
+              console.warn('Send verify error:', err);
+              let msg = err.message || '';
+              if (err.code === 'auth/too-many-requests' || msg.includes('too-many-requests')) {
+                msg = '系統已在短時間內發送過驗證信。請先至信箱（含垃圾郵件匣）查收；如需重發請稍候再試。';
+              }
+              showToast('⚠️ ' + msg);
+            } finally {
+              setTimeout(() => {
+                btnSendVerify.disabled = false;
+                btnSendVerify.textContent = '✉️ 再次發送驗證信';
+              }, 4000);
+            }
+          });
+        }
+
+        // Send Password Reset from Account Settings button (with 2-step confirmation!)
+        const btnSendResetFromAcc = document.getElementById('btnSendPasswordResetFromAccount');
+        const confirmResetBox = document.getElementById('accountResetPwdConfirmBox');
+        const btnCancelAccReset = document.getElementById('btnCancelAccountResetPwd');
+        const btnConfirmAccReset = document.getElementById('btnConfirmAccountResetPwd');
+        const accResetMsg = document.getElementById('accountResetPwdStatusMsg');
+
+        if (btnSendResetFromAcc && confirmResetBox) {
+          btnSendResetFromAcc.addEventListener('click', () => {
+            if (accResetMsg) accResetMsg.textContent = '';
+            confirmResetBox.style.display = 'block';
+          });
+        }
+
+        if (btnCancelAccReset && confirmResetBox) {
+          btnCancelAccReset.addEventListener('click', () => {
+            confirmResetBox.style.display = 'none';
+          });
+        }
+
+        if (btnConfirmAccReset && confirmResetBox) {
+          btnConfirmAccReset.addEventListener('click', async () => {
+            if (!currentFirebaseUser || !currentFirebaseUser.email) return;
+            btnConfirmAccReset.disabled = true;
+            btnConfirmAccReset.textContent = '發送中...';
+            try {
+              await firebaseAuth.sendPasswordResetEmail(currentFirebaseUser.email);
+              confirmResetBox.style.display = 'none';
+              if (accResetMsg) {
+                accResetMsg.style.color = 'var(--tier1)';
+                accResetMsg.textContent = `✅ 密碼重設電郵已發送至【${currentFirebaseUser.email}】！請至信箱點擊連結重設密碼。`;
+              }
+              showToast(`✉️ 密碼重設電郵已發送至 ${currentFirebaseUser.email}！`);
+            } catch (err) {
+              console.warn('Send reset error:', err);
+              if (accResetMsg) {
+                accResetMsg.style.color = 'var(--danger)';
+                accResetMsg.textContent = '❌ ' + (err.message || '發送失敗');
+              }
+            } finally {
+              btnConfirmAccReset.disabled = false;
+              btnConfirmAccReset.textContent = '✅ 確認發送重設電郵';
+            }
+          });
+        }
+
+        // Logout
+        const btnLogout = document.getElementById('btnLogoutUser');
+        if (btnLogout) {
+          btnLogout.addEventListener('click', async () => {
+            if (firebaseAuth) {
+              await firebaseAuth.signOut();
+              showToast('🚪 已登出帳號，已返回本機離線模式');
+            }
+          });
+        }
+
+        // Manual sync
+        const btnManualSync = document.getElementById('btnManualSyncCloud');
+        if (btnManualSync) {
+          btnManualSync.addEventListener('click', async () => {
+            if (currentFirebaseUser && currentFirebaseUser.uid) {
+              showToast('🔄 正在同步最新數據至 Google 雲端...');
+              await syncOrdersToCloud(currentFirebaseUser.uid);
+              showToast('✅ 雲端同步完成！');
+            } else {
+              showToast('💡 請先登入帳號以啟動雲端同步');
+            }
+          });
         }
       }
 
@@ -1073,22 +2390,25 @@
         const calMSelect = document.getElementById('calMonthSelect');
         const anaYSelect = document.getElementById('anaYearSelect');
 
-        let yearOptionsHtml = '';
+        let calYearOptionsHtml = '';
+        let anaYearOptionsHtml = '';
         for (let y = MIN_YEAR; y <= MAX_YEAR; y++) {
-          yearOptionsHtml += `<option value="${y}">${y}年</option>`;
+          calYearOptionsHtml += `<option value="${y}">${y}</option>`;
+          anaYearOptionsHtml += `<option value="${y}">${y}年</option>`;
         }
-        calYSelect.innerHTML = yearOptionsHtml;
-        anaYSelect.innerHTML = yearOptionsHtml;
+        if (calYSelect) calYSelect.innerHTML = calYearOptionsHtml;
+        if (anaYSelect) anaYSelect.innerHTML = anaYearOptionsHtml;
 
         let monthOptionsHtml = '';
         for (let m = 1; m <= 12; m++) {
-          monthOptionsHtml += `<option value="${m}">${m}月</option>`;
+          const mPad = String(m).padStart(2, '0');
+          monthOptionsHtml += `<option value="${m}">${mPad}</option>`;
         }
-        calMSelect.innerHTML = monthOptionsHtml;
+        if (calMSelect) calMSelect.innerHTML = monthOptionsHtml;
 
-        calYSelect.value = String(calYear);
-        calMSelect.value = String(calMonth);
-        anaYSelect.value = String(anaYear);
+        if (calYSelect) calYSelect.value = String(calYear);
+        if (calMSelect) calMSelect.value = String(calMonth);
+        if (anaYSelect) anaYSelect.value = String(anaYear);
       }
 
       function getAllRefundEventsInOrders(orderSubset) {
@@ -1111,8 +2431,10 @@
       }
 
       function renderCalendar() {
-        document.getElementById('calYearSelect').value = String(calYear);
-        document.getElementById('calMonthSelect').value = String(calMonth);
+        const ySel = document.getElementById('calYearSelect');
+        if (ySel) ySel.value = String(calYear);
+        const mSel = document.getElementById('calMonthSelect');
+        if (mSel) mSel.value = String(calMonth);
 
         const ymPrefix = `${calYear}-${String(calMonth).padStart(2, '0')}`;
         const monthOrders = orders.filter(o => o.date && o.date.startsWith(ymPrefix));
@@ -1615,7 +2937,7 @@
         document.getElementById('anaTotalRefundAmt').textContent = fmtMoney(totalRefundAmt);
         document.getElementById('anaTotalRefundCount').textContent = `退款紀錄：${scopedRefundEvents.length} 筆 (退款率 ${refundRate.toFixed(1)}%)`;
 
-        // 1. Tier Breakdown
+        // 1. 各種類別開單及傭金分析 (圓形圖表 + 緊湊表格)
         const tierStats = [1, 2, 3, 4].map(t => {
           const list = activeOrders.filter(o => o.tier === t);
           const amt = list.reduce((s, o) => s + o.amount, 0);
@@ -1624,34 +2946,36 @@
           return { tier: t, count: list.length, amt, comm, pct };
         });
 
-        const tierColors = { 1: 'var(--tier1)', 2: 'var(--tier2)', 3: 'var(--tier3)', 4: '#ea580c' };
-        document.getElementById('tierBreakdownVisual').innerHTML = tierStats.map(st => `
-          <div class="bar-row">
-            <div class="bar-label-line">
-              <span>${ getTierLabel(st.tier) } · ${st.count} 單</span>
-              <span>開單 ${fmtMoney(st.amt)} (${st.pct.toFixed(1)}%) ｜ <strong>佣金 ${fmtMoney(st.comm)}</strong></span>
-            </div>
-            <div class="bar-track">
-              <div class="bar-fill" style="width:${Math.max(st.pct, st.amt > 0 ? 3 : 0)}%; background:${tierColors[st.tier]};"></div>
-            </div>
-          </div>
-        `).join('');
+        const tierHexColors = { 1: '#1b6b50', 2: '#2563eb', 3: '#9333ea', 4: '#ea580c' };
+        const tierPieSlices = tierStats.map(st => ({
+          label: `${getTierShortName(st.tier)} (${st.count}單)`,
+          value: st.amt,
+          color: tierHexColors[st.tier],
+          rightText: `${st.pct.toFixed(1)}% · <strong>${fmtMoneyShort(st.amt)}</strong>`
+        }));
+
+        document.getElementById('tierBreakdownVisual').innerHTML = buildSvgPieChart(
+          tierPieSlices,
+          '有效開單總額',
+          fmtMoneyShort(totalSales),
+          `總佣金 ${fmtMoneyShort(totalComm)}`
+        );
 
         document.getElementById('tierBreakdownTableBody').innerHTML = `
           ${tierStats.map(st => `
             <tr>
-              <td><span class="tier-badge t${st.tier}">${getTierLabel(st.tier)}</span></td>
-              <td class="num-col">${st.count} 單</td>
+              <td class="col-short"><span class="tier-badge t${st.tier}" style="padding:2px 6px;">${getTierShortName(st.tier)}</span></td>
+              <td class="num-col col-short">${st.count}單</td>
               <td class="num-col">${fmtMoney(st.amt)}</td>
-              <td class="num-col">${st.pct.toFixed(1)}%</td>
+              <td class="num-col col-short">${st.pct.toFixed(1)}%</td>
               <td class="num-col" style="font-weight:700; color:var(--primary);">${fmtMoney(st.comm)}</td>
             </tr>
           `).join('')}
           <tr style="background:var(--bg-subtle); font-weight:800;">
-            <td>總計</td>
-            <td class="num-col">${activeOrders.length} 單</td>
+            <td class="col-short">總計</td>
+            <td class="num-col col-short">${activeOrders.length}單</td>
             <td class="num-col">${fmtMoney(totalSales)}</td>
-            <td class="num-col">${totalSales > 0 ? '100.0%' : '0.0%'}</td>
+            <td class="num-col col-short">${totalSales > 0 ? '100.0%' : '0.0%'}</td>
             <td class="num-col" style="color:var(--accent-gold);">${fmtMoney(totalComm)}</td>
           </tr>
         `;
@@ -1814,63 +3138,91 @@
       }
 
       function renderOrderTimeAnalysis(activeOrders) {
-        const periods = [
-          { key: 'morning', label: '上午 (06:00–11:59)', count: 0, amt: 0 },
-          { key: 'afternoon', label: '下午 (12:00–17:59)', count: 0, amt: 0 },
-          { key: 'evening', label: '晚上 (18:00–23:59)', count: 0, amt: 0 },
-          { key: 'night', label: '凌晨 (00:00–05:59)', count: 0, amt: 0 }
+        // 時段分為：早更09:00-10:59，中午11:00-14:59，下午15:00-17:59，晚上18:00-20:59，夜更21:00-23:30
+        const shifts = [
+          { key: 'early', name: '早更', range: '09:00-10:59', label: '早更 09:00-10:59', color: '#0d9488', count: 0, amt: 0 },
+          { key: 'noon', name: '中午', range: '11:00-14:59', label: '中午 11:00-14:59', color: '#d97706', count: 0, amt: 0 },
+          { key: 'afternoon', name: '下午', range: '15:00-17:59', label: '下午 15:00-17:59', color: '#2563eb', count: 0, amt: 0 },
+          { key: 'evening', name: '晚上', range: '18:00-20:59', label: '晚上 18:00-20:59', color: '#7c3aed', count: 0, amt: 0 },
+          { key: 'night', name: '夜更', range: '21:00-23:30', label: '夜更 21:00-23:30', color: '#be123c', count: 0, amt: 0 }
         ];
 
-        const hourBuckets = Array.from({ length: 24 }, (_, h) => ({ hour: h, count: 0, amt: 0 }));
-
         activeOrders.forEach(o => {
-          const hh = parseInt((o.time || '12:00').split(':')[0], 10);
-          const safeH = isNaN(hh) ? 12 : Math.min(23, Math.max(0, hh));
-          hourBuckets[safeH].count += 1;
-          hourBuckets[safeH].amt += o.amount;
+          const parts = (o.time || '12:00').split(':');
+          const hh = parseInt(parts[0], 10);
+          const mm = parseInt(parts[1], 10) || 0;
+          const totalMins = (isNaN(hh) ? 12 : Math.min(23, Math.max(0, hh))) * 60 + (isNaN(mm) ? 0 : mm);
 
-          if (safeH >= 6 && safeH <= 11) {
-            periods[0].count += 1; periods[0].amt += o.amount;
-          } else if (safeH >= 12 && safeH <= 17) {
-            periods[1].count += 1; periods[1].amt += o.amount;
-          } else if (safeH >= 18 && safeH <= 23) {
-            periods[2].count += 1; periods[2].amt += o.amount;
+          if (totalMins >= 540 && totalMins <= 659) {
+            shifts[0].count += 1; shifts[0].amt += o.amount;
+          } else if (totalMins >= 660 && totalMins <= 899) {
+            shifts[1].count += 1; shifts[1].amt += o.amount;
+          } else if (totalMins >= 900 && totalMins <= 1079) {
+            shifts[2].count += 1; shifts[2].amt += o.amount;
+          } else if (totalMins >= 1080 && totalMins <= 1259) {
+            shifts[3].count += 1; shifts[3].amt += o.amount;
+          } else if (totalMins >= 1260 && totalMins <= 1410) {
+            shifts[4].count += 1; shifts[4].amt += o.amount;
+          } else if (totalMins < 540) {
+            shifts[0].count += 1; shifts[0].amt += o.amount;
           } else {
-            periods[3].count += 1; periods[3].amt += o.amount;
+            shifts[4].count += 1; shifts[4].amt += o.amount;
           }
         });
 
-        document.getElementById('timePeriodSummary').innerHTML = `
-          <div class="grid-2" style="gap:8px;">
-            ${periods.map(p => `
-              <div style="background:var(--bg-subtle); padding:8px 12px; border-radius:8px; display:flex; justify-content:space-between; align-items:center; font-size:0.82rem;">
-                <span><strong>${p.label}</strong></span>
-                <span>${p.count} 單 · <strong style="color:var(--primary);">${fmtMoneyShort(p.amt)}</strong></span>
-              </div>
-            `).join('')}
+        const totalCount = shifts.reduce((s, item) => s + item.count, 0);
+        const totalShiftAmt = shifts.reduce((s, item) => s + item.amt, 0);
+
+        // Use order count (or amount if count > 0) for time activity pie chart
+        const pieSlices = shifts.map(sh => {
+          const pct = totalCount > 0 ? ((sh.count / totalCount) * 100).toFixed(1) : '0.0';
+          return {
+            label: sh.label,
+            value: sh.count > 0 ? sh.count : 0,
+            color: sh.color,
+            rightText: `${sh.count}單 (${pct}%) · <strong>${fmtMoneyShort(sh.amt)}</strong>`
+          };
+        });
+
+        document.getElementById('timePeriodSummary').innerHTML = buildSvgPieChart(
+          pieSlices,
+          '時段總開單數',
+          `${totalCount} 單`,
+          fmtMoneyShort(totalShiftAmt)
+        );
+
+        document.getElementById('hourlyDistributionContainer').innerHTML = `
+          <div class="table-wrap" style="margin-top:8px;">
+            <table class="data-table compact-tier-table">
+              <thead>
+                <tr>
+                  <th class="col-short">時段</th>
+                  <th class="num-col col-short">有效單數</th>
+                  <th class="num-col col-short">活躍比例</th>
+                  <th class="num-col">時段開單金額</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${shifts.map(sh => {
+                  const pct = totalCount > 0 ? ((sh.count / totalCount) * 100).toFixed(1) : '0.0';
+                  return `
+                    <tr>
+                      <td class="col-short">
+                        <span style="display:inline-flex; align-items:center; gap:5px; font-weight:700;">
+                          <span class="pie-dot" style="background:${sh.color};"></span>
+                          ${sh.label}
+                        </span>
+                      </td>
+                      <td class="num-col col-short">${sh.count}單</td>
+                      <td class="num-col col-short">${pct}%</td>
+                      <td class="num-col" style="font-weight:700; color:var(--primary);">${fmtMoney(sh.amt)}</td>
+                    </tr>
+                  `;
+                }).join('')}
+              </tbody>
+            </table>
           </div>
         `;
-
-        // 只顯示 09:00 至 23:59 時間段內的各小時
-        const filteredHours = hourBuckets.filter(b => b.hour >= 9 && b.hour <= 23);
-        const maxHourCount = Math.max(1, ...filteredHours.map(b => b.count));
-
-        document.getElementById('hourlyDistributionContainer').innerHTML = filteredHours.map(b => {
-          const hStr = `${String(b.hour).padStart(2, '0')}:00 – ${String(b.hour).padStart(2, '0')}:59`;
-          const pct = (b.count / maxHourCount) * 100;
-          const hasData = b.count > 0;
-          return `
-            <div class="bar-row" style="${hasData ? '' : 'opacity:0.5;'}">
-              <div class="bar-label-line">
-                <span style="${hasData ? 'font-weight:700; color:var(--primary);' : ''}">${hStr}</span>
-                <span>${b.count} 單 ｜ ${fmtMoney(b.amt)}</span>
-              </div>
-              <div class="bar-track">
-                <div class="bar-fill" style="width:${pct}%; background:${hasData ? 'var(--accent-gold)' : 'transparent'};"></div>
-              </div>
-            </div>
-          `;
-        }).join('');
       }
 
       function renderRefundAnalysis(refundEvents, totalRefundAmt) {
@@ -1882,39 +3234,54 @@
           '其他原因'
         ];
 
+        const refundColors = {
+          '現退': '#dc2626',
+          '網退': '#ea580c',
+          'X退': '#d97706',
+          'H退': '#7c3aed',
+          '其他原因': '#64748b'
+        };
+
         const reasonStats = standardReasons.map(r => {
           const matched = refundEvents.filter(ev => (ev.reason || '其他原因') === r);
           const amt = matched.reduce((s, ev) => s + ev.amount, 0);
           const pct = totalRefundAmt > 0 ? (amt / totalRefundAmt) * 100 : 0;
-          return { reason: r, count: matched.length, amt, pct };
+          return { reason: r, count: matched.length, amt, pct, color: refundColors[r] || '#dc2626' };
         });
 
-        document.getElementById('refundReasonChart').innerHTML = reasonStats.map(st => `
-          <div class="bar-row">
-            <div class="bar-label-line">
-              <span>${st.reason} (${st.count} 筆)</span>
-              <span style="color:var(--danger);">${fmtMoney(st.amt)} (${st.pct.toFixed(1)}%)</span>
-            </div>
-            <div class="bar-track">
-              <div class="bar-fill" style="width:${Math.max(st.pct, st.amt > 0 ? 3 : 0)}%; background:var(--danger);"></div>
-            </div>
-          </div>
-        `).join('');
+        const refundPieSlices = reasonStats.map(st => ({
+          label: `${st.reason} (${st.count}筆)`,
+          value: st.amt,
+          color: st.color,
+          rightText: `${st.pct.toFixed(1)}% · <strong style="color:var(--danger);">${fmtMoneyShort(st.amt)}</strong>`
+        }));
+
+        document.getElementById('refundReasonChart').innerHTML = buildSvgPieChart(
+          refundPieSlices,
+          '期間退款總額',
+          fmtMoneyShort(totalRefundAmt),
+          `共 ${refundEvents.length} 筆退款`
+        );
 
         document.getElementById('refundReasonTableBody').innerHTML = `
           ${reasonStats.map(st => `
             <tr>
-              <td>${st.reason}</td>
-              <td class="num-col">${st.count} 筆</td>
+              <td class="col-short">
+                <span style="display:inline-flex; align-items:center; gap:5px; font-weight:700;">
+                  <span class="pie-dot" style="background:${st.color};"></span>
+                  ${st.reason}
+                </span>
+              </td>
+              <td class="num-col col-short">${st.count}筆</td>
               <td class="num-col" style="color:var(--danger); font-weight:700;">${fmtMoney(st.amt)}</td>
-              <td class="num-col">${st.pct.toFixed(1)}%</td>
+              <td class="num-col col-short">${st.pct.toFixed(1)}%</td>
             </tr>
           `).join('')}
           <tr style="background:var(--danger-bg); font-weight:800; color:var(--danger);">
-            <td>總退款合計</td>
-            <td class="num-col">${refundEvents.length} 筆</td>
+            <td class="col-short">總退款合計</td>
+            <td class="num-col col-short">${refundEvents.length}筆</td>
             <td class="num-col">${fmtMoney(totalRefundAmt)}</td>
-            <td class="num-col">${totalRefundAmt > 0 ? '100.0%' : '0.0%'}</td>
+            <td class="num-col col-short">${totalRefundAmt > 0 ? '100.0%' : '0.0%'}</td>
           </tr>
         `;
 
@@ -2330,6 +3697,8 @@
 
       // ==================== EVENT LISTENERS INIT ====================
       function bindEvents() {
+
+
         // Lock screen events (bound exactly once)
         const lockForm = document.getElementById('lockScreenForm');
         if (lockForm) {
@@ -2381,7 +3750,8 @@
         if (btnSavePwd) {
           btnSavePwd.addEventListener('click', (e) => {
             e.preventDefault();
-            loadSecurityConfig();
+            requestPersistentStorage();
+      loadSecurityConfig();
             const curInput = document.getElementById('inputCurrentPassword');
             const n1Input = document.getElementById('inputNewPassword');
             const n2Input = document.getElementById('inputConfirmPassword');
@@ -2487,13 +3857,50 @@
           });
         }
 
-        // Dedicated Folder Saving Function (Uses Android Intent.ACTION_CREATE_DOCUMENT in APK, or SaveFilePicker / Blob in Browser)
+        // Detect iOS (iPhone / iPad / iPod)
+        const isIOSDevice = /iPad|iPhone|iPod/.test(navigator.userAgent || '') ||
+          (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
+        // Helper to invoke iOS native "儲存到「檔案」(Save to Files)" folder picker via Web Share API Level 2
+        async function tryIosSaveToFilesSheet(fname, content, mime) {
+          if (!navigator.share) return false;
+          const cleanMime = (mime || 'text/plain').split(';')[0];
+          const candidateMimes = [cleanMime, 'text/plain', 'application/octet-stream'];
+          for (let i = 0; i < candidateMimes.length; i++) {
+            try {
+              const fileObj = new File([content], fname, { type: candidateMimes[i] });
+              const canShareFiles = !navigator.canShare || navigator.canShare({ files: [fileObj] });
+              if (canShareFiles) {
+                // On iOS, pass ONLY `files` (without `text`) so "儲存到「檔案」" saves the exact .json/.csv file!
+                await navigator.share({ files: [fileObj] });
+                showImportStatusBanner(`📁 <strong>已喚起系統資料夾儲存選單！</strong>請在選單中點選<strong>「儲存到『檔案』(Save to Files)」</strong>，即可選擇手機內的資料夾儲存【${fname}】。`, false);
+                showToast(`📁 已成功喚起資料夾另存選單：${fname}`);
+                return true;
+              }
+            } catch (err) {
+              if (err && err.name === 'AbortError') {
+                showToast('💡 已取消另存檔案');
+                return true;
+              }
+              console.warn('navigator.share candidate failed:', err);
+            }
+          }
+          return false;
+        }
+
+        // Dedicated Folder Saving Function (Supports iOS "Save to Files" folder picker, Android SAF, Desktop SaveFilePicker, and Blob download)
         async function saveFileDirectlyToUserFolder(fname, content, mime) {
-          // Method 1: Android APK Native System Folder Picker (Intent.ACTION_CREATE_DOCUMENT)
+          // Priority 1: If on iOS (iPhone / iPad), immediately invoke native iOS "儲存到「檔案」(Save to Files)" folder picker!
+          if (isIOSDevice) {
+            const iosHandled = await tryIosSaveToFilesSheet(fname, content, mime);
+            if (iosHandled) return true;
+          }
+
+          // Priority 2: Android APK Native System Folder Picker (Intent.ACTION_CREATE_DOCUMENT)
           if (window.AndroidFolderSaver && typeof window.AndroidFolderSaver.saveFileToFolder === 'function') {
             try {
               window.AndroidFolderSaver.saveFileToFolder(fname, content, mime);
-              showImportStatusBanner(`📁 <strong>已開啟手機系統資料夾選取器！</strong>請在彈出的「我的檔案／最近項目」視窗中選擇手機資料夾並按右下角「儲存」（${fname}）。`, false);
+              showImportStatusBanner(`📁 <strong>已開啟手機系統資料夾選取器！</strong>請在彈出的視窗中選擇手機資料夾並按右下角「儲存」（${fname}）。`, false);
               showToast('📁 請在手機資料夾視窗點選位置並按「儲存」');
               return true;
             } catch (e) {
@@ -2501,7 +3908,7 @@
             }
           }
 
-          // Method 2: Save File Picker (Desktop / supported mobile browsers)
+          // Priority 3: Desktop / Chrome Save File Picker (showSaveFilePicker)
           if (typeof window.showSaveFilePicker === 'function') {
             const t0 = Date.now();
             try {
@@ -2529,28 +3936,11 @@
             }
           }
 
-          // Method 3: Directory Picker (only if supported and dialog stayed open >600ms on cancel)
-          if (typeof window.showDirectoryPicker === 'function') {
-            const t0 = Date.now();
-            try {
-              const dirHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
-              const fileHandle = await dirHandle.getFileHandle(fname, { create: true });
-              const writable = await fileHandle.createWritable();
-              await writable.write(content);
-              await writable.close();
-              showImportStatusBanner(`📁 <strong>成功儲存！</strong>已將【${fname}】直接寫入您選取的資料夾。`, false);
-              showToast(`📁 已成功儲存至選定資料夾：${fname}`);
-              return true;
-            } catch (err) {
-              if (err && err.name === 'AbortError' && (Date.now() - t0) > 600) {
-                showToast('💡 已取消選擇資料夾');
-                return false;
-              }
-              console.warn('showDirectoryPicker fallback:', err);
-            }
-          }
+          // Priority 4: Mobile Web Share File Sheet (for non-iOS mobile browsers where showSaveFilePicker is absent)
+          const shareHandled = await tryIosSaveToFilesSheet(fname, content, mime);
+          if (shareHandled) return true;
 
-          // Method 4: Standard Browser Blob Download + Data URI fallback
+          // Priority 5: Standard Browser Blob Download (saves to iOS "檔案 -> 下載項目" or Android "Downloads")
           try {
             const blob = new Blob([content], { type: mime });
             const url = URL.createObjectURL(blob);
@@ -2564,7 +3954,7 @@
               a.remove();
               URL.revokeObjectURL(url);
             }, 4000);
-            showImportStatusBanner(`💾 <strong>已觸發檔案下載【${fname}】！</strong>（在獨立安裝的 WYyTy.apk 內點擊此按鈕將直接開啟 Android 系統資料夾另存視窗）。`, false);
+            showImportStatusBanner(`💾 <strong>已觸發檔案下載【${fname}】！</strong>iOS 用戶可在「檔案 (Files)」App 的「下載項目」資料夾中查看。`, false);
             showToast(`💾 已觸發檔案下載：${fname}`);
             return true;
           } catch (err) {
@@ -2693,14 +4083,6 @@
           document.getElementById(id).addEventListener('input', updateEntryLivePreview);
         });
 
-        // Clear Date/Time
-        document.getElementById('btnClearDateTime').addEventListener('click', () => {
-          document.getElementById('entryDateInput').value = '';
-          document.getElementById('entryHourInput').value = '';
-          document.getElementById('entryMinuteInput').value = '';
-          showToast('🕒 已清空日期與時間，確認輸入時將自動採用當下時間');
-        });
-
         // Confirm Entry
         document.getElementById('btnConfirmEntry').addEventListener('click', handleConfirmEntry);
 
@@ -2712,16 +4094,23 @@
           }
         });
 
-        // Calendar controls
-        document.getElementById('calYearSelect').addEventListener('change', (e) => {
-          calYear = parseInt(e.target.value, 10);
-          renderCalendar();
-        });
 
-        document.getElementById('calMonthSelect').addEventListener('change', (e) => {
-          calMonth = parseInt(e.target.value, 10);
-          renderCalendar();
-        });
+
+        const calYSelectEl = document.getElementById('calYearSelect');
+        if (calYSelectEl) {
+          calYSelectEl.addEventListener('change', (e) => {
+            calYear = parseInt(e.target.value, 10);
+            renderCalendar();
+          });
+        }
+
+        const calMSelectEl = document.getElementById('calMonthSelect');
+        if (calMSelectEl) {
+          calMSelectEl.addEventListener('change', (e) => {
+            calMonth = parseInt(e.target.value, 10);
+            renderCalendar();
+          });
+        }
 
         document.getElementById('btnPrevMonth').addEventListener('click', () => {
           if (calMonth === 1) {
@@ -3120,12 +4509,14 @@
       // ==================== INITIALIZE APP ====================
             loadSecurityConfig();
       applyLockScreenState();
+      initFirebaseServices();
       loadCustomRates();
       loadOrders();
       loadBackupSnapshots();
       initYearMonthSelects();
       updateAllRateLabelsInUI();
       bindEvents();
+      bindAuthEvents();
       updateLiveClock();
       setInterval(updateLiveClock, 1000);
       updateEntryLivePreview();
@@ -3133,47 +4524,15 @@
       renderCalendar();
       renderAnalytics();
       renderBackupSnapshotsList();
+      checkAndHandleUrlEmailActions();
     })();
 
 
-// ==================== PWA SERVICE WORKER & INSTALL PROMPT ====================
-let deferredInstallPrompt = null;
-
+// ==================== PWA SERVICE WORKER REGISTRATION ====================
 if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./sw.js')
-      .then(() => {
-        const badge = document.querySelector('.offline-badge');
-        if (badge) {
-          badge.textContent = '● 離線安裝就緒 (PWA/APK)';
-        }
-      })
-      .catch((err) => {
-        console.warn('Service Worker registration skipped:', err);
-      });
+    navigator.serviceWorker.register('./sw.js').catch((err) => {
+      console.warn('Service Worker notice:', err);
+    });
   });
 }
-
-window.addEventListener('beforeinstallprompt', (e) => {
-  e.preventDefault();
-  deferredInstallPrompt = e;
-  const installBtn = document.getElementById('btnPwaInstall');
-  if (installBtn) {
-    installBtn.style.display = 'inline-flex';
-  }
-});
-
-document.addEventListener('DOMContentLoaded', () => {
-  const installBtn = document.getElementById('btnPwaInstall');
-  if (installBtn) {
-    installBtn.addEventListener('click', async () => {
-      if (!deferredInstallPrompt) return;
-      deferredInstallPrompt.prompt();
-      const { outcome } = await deferredInstallPrompt.userChoice;
-      if (outcome === 'accepted') {
-        installBtn.style.display = 'none';
-      }
-      deferredInstallPrompt = null;
-    });
-  }
-});

@@ -41,6 +41,103 @@
       flex-direction: column;
     }
 
+    
+    /* iOS Safe Area & Standalone PWA Optimizations */
+    .app-header {
+      padding-top: max(14px, env(safe-area-inset-top));
+    }
+    .main-container {
+      padding-bottom: max(48px, calc(env(safe-area-inset-bottom) + 24px));
+    }
+    .lock-screen-overlay {
+      padding-top: max(24px, env(safe-area-inset-top));
+      padding-bottom: max(24px, env(safe-area-inset-bottom));
+    }
+    @media (max-width: 768px) {
+      .input-text, .input-select, .cal-select {
+        font-size: 16px !important;
+      }
+    }
+
+    
+    /* Firebase Auth & User Profile Header */
+    .user-profile-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(255, 255, 255, 0.18);
+      border: 1px solid rgba(255, 255, 255, 0.32);
+      border-radius: 999px;
+      padding: 4px 10px;
+      font-size: 0.78rem;
+      font-weight: 700;
+      color: #ffffff;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .user-profile-badge:hover {
+      background: rgba(255, 255, 255, 0.28);
+    }
+    .user-avatar-circle {
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      background: var(--accent-gold);
+      color: #ffffff;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.7rem;
+      font-weight: 800;
+    }
+    .cloud-sync-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 7px;
+      border-radius: 999px;
+      font-size: 0.68rem;
+      font-weight: 700;
+      background: rgba(255, 255, 255, 0.15);
+      color: #ffffff;
+    }
+    .cloud-sync-pill.synced {
+      background: rgba(52, 211, 153, 0.25);
+      color: #a7f3d0;
+    }
+    .cloud-sync-pill.syncing {
+      background: rgba(251, 191, 36, 0.25);
+      color: #fde68a;
+    }
+
+    /* Auth Modal Tabs & Forms */
+    .auth-tab-bar {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+      background: var(--bg-subtle);
+      padding: 4px;
+      border-radius: 10px;
+      margin-bottom: 14px;
+    }
+    .auth-tab-btn {
+      appearance: none;
+      border: none;
+      background: transparent;
+      padding: 8px;
+      font-size: 0.88rem;
+      font-weight: 700;
+      color: var(--text-muted);
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .auth-tab-btn.active {
+      background: var(--bg-card);
+      color: var(--primary);
+      box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+    }
+
     /* Top Header */
     .app-header {
       background: linear-gradient(135deg, #17382e 0%, #245848 100%);
@@ -460,7 +557,7 @@
     /* Date & Time Inputs */
     .datetime-grid {
       display: grid;
-      grid-template-columns: 1.4fr 1fr 1fr auto;
+      grid-template-columns: 1.4fr 1fr 1fr;
       gap: 10px;
       align-items: end;
     }
@@ -472,9 +569,148 @@
       .datetime-grid > div:first-child {
         grid-column: span 2;
       }
-      .datetime-grid > div:last-child {
-        grid-column: span 2;
-      }
+    }
+
+    /* Fix chart & grid overflow (修正穿圖現象) & Pie Chart + Compact Table Styles */
+    .grid-2 > *, .grid-3 > *, .grid-4 > *, .card {
+      min-width: 0;
+      max-width: 100%;
+      box-sizing: border-box;
+    }
+    .card {
+      overflow: hidden;
+    }
+    .pie-chart-container {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: center;
+      gap: 14px;
+      padding: 8px 4px;
+      width: 100%;
+      box-sizing: border-box;
+    }
+    .pie-svg-wrap {
+      width: 168px;
+      height: 168px;
+      flex-shrink: 0;
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .pie-legend-list {
+      flex: 1;
+      min-width: 185px;
+      max-width: 100%;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .pie-legend-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+      font-size: 0.8rem;
+      padding: 5px 8px;
+      background: var(--bg-subtle);
+      border-radius: 6px;
+      line-height: 1.25;
+    }
+    .pie-legend-left {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 0;
+      font-weight: 700;
+      color: var(--text-main);
+    }
+    .pie-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .pie-legend-right {
+      text-align: right;
+      white-space: nowrap;
+      font-variant-numeric: tabular-nums;
+      font-size: 0.78rem;
+    }
+    /* Unified Year / Month Single-Box Picker (2026 / 11) */
+    .cal-unified-ym-picker {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: #ffffff;
+      border: 1.5px solid var(--border);
+      border-radius: 10px;
+      padding: 5px 16px;
+      min-width: 200px;
+      max-width: 340px;
+      width: 100%;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+      gap: 4px;
+      box-sizing: border-box;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    .cal-unified-ym-picker:focus-within {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(30, 70, 58, 0.12);
+    }
+    .cal-ym-part {
+      appearance: none;
+      -webkit-appearance: none;
+      border: none;
+      background: transparent;
+      color: var(--primary);
+      font-size: 1.08rem;
+      font-weight: 800;
+      font-variant-numeric: tabular-nums;
+      padding: 4px 10px;
+      cursor: pointer;
+      outline: none;
+      text-align: center;
+      text-align-last: center;
+      border-radius: 6px;
+      transition: background 0.15s;
+    }
+    .cal-ym-part:hover, .cal-ym-part:focus {
+      background: var(--primary-light);
+    }
+    .cal-ym-year {
+      min-width: 72px;
+    }
+    .cal-ym-month {
+      min-width: 52px;
+    }
+    .cal-ym-divider {
+      font-size: 1.08rem;
+      font-weight: 800;
+      color: var(--primary);
+      opacity: 0.55;
+      user-select: none;
+      padding: 0 2px;
+    }
+    /* Compact table for 各種類別開單及傭金分析 */
+    table.compact-tier-table {
+      min-width: 0 !important;
+      width: 100% !important;
+      border-collapse: collapse;
+      font-size: 0.8rem !important;
+      table-layout: auto;
+    }
+    table.compact-tier-table th,
+    table.compact-tier-table td {
+      padding: 5px 5px !important;
+      line-height: 1.2 !important;
+      white-space: nowrap;
+    }
+    table.compact-tier-table .col-short {
+      width: 1%;
+      padding-left: 4px !important;
+      padding-right: 4px !important;
     }
 
     /* Buttons */

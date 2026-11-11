@@ -1,7 +1,6 @@
 {
   "name": "wyyty",
   "version": "1.0.0",
-  "description": "WYyTy - 個人中藥開單紀錄及佣金分析",
   "private": true,
   "dependencies": {
     "@capacitor/android": "6.1.2",
