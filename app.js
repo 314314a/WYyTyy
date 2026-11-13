@@ -138,11 +138,12 @@
 
       const RATES_STORAGE_KEY = 'tcm_custom_rates_v2';
 
-      // Default editable commission rates (stored as decimal e.g. 0.20)
+      // Default editable commission rates (stored as decimal e.g. 0.20, including 4: 其他)
       let tierRates = {
         1: 0.20,
         2: 0.15,
-        3: 0.07
+        3: 0.07,
+        4: 0.10
       };
 
       const MIN_YEAR = 2023;
@@ -155,6 +156,7 @@
       let pendingProductPhotos = [];
       let editReceiptPhotos = [];
       let editProductPhotos = [];
+      let quickAddReceiptPhotos = [];
 
       // Create compact SVG data URI sample images for demo orders so user can test viewing/editing photos on Calendar immediately
       function makeSampleSvgDataUri(title, subtitle, bgColor, accentColor) {
@@ -240,23 +242,22 @@
       }
 
       function renderEntryPhotoThumbs() {
-        renderThumbnailsList('entryReceiptThumbs', pendingReceiptPhotos, '單據圖片', (idx) => {
+        renderThumbnailsList('entryReceiptThumbs', pendingReceiptPhotos, '單據/商品圖片', (idx) => {
           pendingReceiptPhotos.splice(idx, 1);
-          renderEntryPhotoThumbs();
-        });
-        renderThumbnailsList('entryProductThumbs', pendingProductPhotos, '貨品圖片', (idx) => {
-          pendingProductPhotos.splice(idx, 1);
           renderEntryPhotoThumbs();
         });
       }
 
-      function renderEditPhotoThumbs() {
-        renderThumbnailsList('editReceiptThumbs', editReceiptPhotos, '單據圖片', (idx) => {
-          editReceiptPhotos.splice(idx, 1);
-          renderEditPhotoThumbs();
+      function renderQuickAddPhotoThumbs() {
+        renderThumbnailsList('quickReceiptThumbs', quickAddReceiptPhotos, '單據/商品圖片', (idx) => {
+          quickAddReceiptPhotos.splice(idx, 1);
+          renderQuickAddPhotoThumbs();
         });
-        renderThumbnailsList('editProductThumbs', editProductPhotos, '貨品圖片', (idx) => {
-          editProductPhotos.splice(idx, 1);
+      }
+
+      function renderEditPhotoThumbs() {
+        renderThumbnailsList('editReceiptThumbs', editReceiptPhotos, '單據/商品圖片', (idx) => {
+          editReceiptPhotos.splice(idx, 1);
           renderEditPhotoThumbs();
         });
       }
@@ -324,10 +325,9 @@
       function openLiveCameraModal(targetType) {
         currentCameraTarget = targetType;
         const titleMap = {
-          'entry-receipt': '📷 拍攝開單單據圖片',
-          'entry-product': '📷 拍攝貨品 / 中藥圖片',
-          'edit-receipt': '📷 補拍開單單據圖片',
-          'edit-product': '📷 補拍貨品 / 中藥圖片'
+          'entry-receipt': '📷 拍攝單據/商品圖片',
+          'quick-receipt': '📷 拍攝單據/商品圖片',
+          'edit-receipt': '📷 補拍單據/商品圖片'
         };
         document.getElementById('cameraModalTitle').textContent = titleMap[targetType] || '📷 攝像頭拍照';
         document.getElementById('liveCameraModal').classList.add('open');
@@ -351,6 +351,9 @@
         } else if (currentCameraTarget === 'edit-receipt') {
           editReceiptPhotos.push(dataUrl);
           renderEditPhotoThumbs();
+        } else if (currentCameraTarget === 'quick-receipt') {
+          quickAddReceiptPhotos.push(dataUrl);
+          renderQuickAddPhotoThumbs();
         } else if (currentCameraTarget === 'edit-product') {
           editProductPhotos.push(dataUrl);
           renderEditPhotoThumbs();
@@ -420,7 +423,7 @@
 
       function getTierLabel(tier, customRate) {
         if (tier === 4 || tier === '4' || tier === 'other') {
-          const rateVal = customRate !== undefined ? customRate : 0.10;
+          const rateVal = customRate !== undefined ? customRate : (tierRates[4] !== undefined ? tierRates[4] : 0.10);
           return `其他 (${fmtPct(rateVal)}佣)`;
         }
         return `${tier}仔 (${fmtPct(tierRates[tier] || 0)}佣)`;
@@ -487,6 +490,68 @@
         `;
       }
 
+      // ==================== MULTI-BOOK (多帳簿) & INDEPENDENT COMMISSION RATES ====================
+      const BOOKS_STORAGE_BASE_KEY = 'wyyty_books_v1';
+      let books = [
+        {
+          id: 'book_1',
+          name: '帳簿一',
+          tierRates: { 1: 0.20, 2: 0.15, 3: 0.07, 4: 0.10 }
+        }
+      ];
+      let activeBookId = 'book_1';
+      let pendingDeleteBookId = null;
+
+      // Dynamic Entry Rows State (View 1 & Quick Add Modal)
+      let entryRowsState = [
+        { id: 'erow_1', amount: '', tier: 1 }
+      ];
+      let quickAddRowsState = [
+        { id: 'qrow_1', amount: '', tier: 1 }
+      ];
+
+      function escapeHtml(str) {
+        return String(str || '')
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;');
+      }
+
+      function getBooksStorageKeyForUser() {
+        if (currentFirebaseUser && currentFirebaseUser.uid) {
+          return BOOKS_STORAGE_BASE_KEY + '_' + currentFirebaseUser.uid;
+        }
+        return BOOKS_STORAGE_BASE_KEY + '_local';
+      }
+
+      function getActiveBook() {
+        let found = books.find(b => b.id === activeBookId);
+        if (!found) {
+          if (books.length === 0) {
+            books.push({
+              id: 'book_1',
+              name: '帳簿一',
+              tierRates: { 1: 0.20, 2: 0.15, 3: 0.07, 4: 0.10 }
+            });
+          }
+          found = books[0];
+          activeBookId = found.id;
+        }
+        if (!found.tierRates) {
+          found.tierRates = { 1: 0.20, 2: 0.15, 3: 0.07, 4: 0.10 };
+        }
+        if (typeof found.tierRates[4] !== 'number') {
+          found.tierRates[4] = 0.10;
+        }
+        return found;
+      }
+
+      function getActiveBookOrders() {
+        return orders.filter(o => (o.bookId || 'book_1') === activeBookId);
+      }
+
       function loadCustomRates() {
         try {
           const raw = localStorage.getItem(RATES_STORAGE_KEY);
@@ -496,12 +561,81 @@
               tierRates = {
                 1: parsed[1],
                 2: parsed[2],
-                3: parsed[3]
+                3: parsed[3],
+                4: typeof parsed[4] === 'number' ? parsed[4] : 0.10
               };
             }
           }
         } catch (e) {
           console.warn('Rates read fallback:', e);
+        }
+      }
+
+      function loadBooksConfig() {
+        loadCustomRates();
+        const key = getBooksStorageKeyForUser();
+        try {
+          const raw = localStorage.getItem(key) || localStorage.getItem(BOOKS_STORAGE_BASE_KEY + '_local');
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            if (parsed && Array.isArray(parsed.books) && parsed.books.length > 0) {
+              books = parsed.books.map(b => ({
+                id: String(b.id || 'book_1'),
+                name: String(b.name || '帳簿一'),
+                tierRates: {
+                  1: (b.tierRates && typeof b.tierRates[1] === 'number') ? b.tierRates[1] : 0.20,
+                  2: (b.tierRates && typeof b.tierRates[2] === 'number') ? b.tierRates[2] : 0.15,
+                  3: (b.tierRates && typeof b.tierRates[3] === 'number') ? b.tierRates[3] : 0.07,
+                  4: (b.tierRates && typeof b.tierRates[4] === 'number') ? b.tierRates[4] : 0.10
+                }
+              }));
+              if (parsed.activeBookId && books.some(b => b.id === parsed.activeBookId)) {
+                activeBookId = parsed.activeBookId;
+              } else {
+                activeBookId = books[0].id;
+              }
+            }
+          } else {
+            books = [
+              {
+                id: 'book_1',
+                name: '帳簿一',
+                tierRates: {
+                  1: tierRates[1] || 0.20,
+                  2: tierRates[2] || 0.15,
+                  3: tierRates[3] || 0.07,
+                  4: tierRates[4] !== undefined ? tierRates[4] : 0.10
+                }
+              }
+            ];
+            activeBookId = 'book_1';
+          }
+        } catch (e) {
+          console.warn('Books config read error:', e);
+        }
+
+        const activeBk = getActiveBook();
+        tierRates = {
+          1: activeBk.tierRates[1],
+          2: activeBk.tierRates[2],
+          3: activeBk.tierRates[3],
+          4: activeBk.tierRates[4] !== undefined ? activeBk.tierRates[4] : 0.10
+        };
+      }
+
+      function saveBooksConfig() {
+        const activeBk = getActiveBook();
+        activeBk.tierRates = {
+          1: tierRates[1],
+          2: tierRates[2],
+          3: tierRates[3],
+          4: tierRates[4] !== undefined ? tierRates[4] : 0.10
+        };
+        const key = getBooksStorageKeyForUser();
+        try {
+          localStorage.setItem(key, JSON.stringify({ books, activeBookId }));
+        } catch (e) {
+          console.warn('Books config save error:', e);
         }
       }
 
@@ -511,14 +645,246 @@
         } catch (e) {
           console.warn('Rates save fallback:', e);
         }
+        saveBooksConfig();
+        if (currentFirebaseUser && currentFirebaseUser.uid) {
+          syncOrdersToCloud(currentFirebaseUser.uid);
+        }
+      }
+
+      function switchActiveBook(bookId) {
+        if (!books.some(b => b.id === bookId)) return;
+        activeBookId = bookId;
+        const bk = getActiveBook();
+        tierRates = {
+          1: bk.tierRates[1],
+          2: bk.tierRates[2],
+          3: bk.tierRates[3],
+          4: bk.tierRates[4] !== undefined ? bk.tierRates[4] : 0.10
+        };
+        saveBooksConfig();
+        updateAllRateLabelsInUI();
+        renderTopBookBar();
+        renderSettingsBookManagement();
+        renderDynamicEntryRows();
+        updateEntryLivePreview();
+        renderRecentOrders();
+        renderCalendar();
+        renderAnalytics();
+        showToast(`📚 已切換至「${bk.name}」（佣金率：${+(tierRates[1]*100).toFixed(1)}% / ${+(tierRates[2]*100).toFixed(1)}% / ${+(tierRates[3]*100).toFixed(1)}% / 其他 ${+(tierRates[4]*100).toFixed(1)}%）`);
+      }
+
+      function updateSettingsMenuSubtitles() {
+        const activeBk = getActiveBook();
+        const subPwd = document.getElementById('menuSubPwdStatus');
+        if (subPwd) {
+          subPwd.textContent = securityConfig.enabled ? '目前已開啟應用密碼鎖保護' : '目前已關閉密碼鎖（直接進入）';
+        }
+        const subBooks = document.getElementById('menuSubBooksStatus');
+        if (subBooks) {
+          subBooks.textContent = `共 ${books.length} 個帳簿 ｜ 目前使用：${activeBk.name}`;
+        }
+        const subRates = document.getElementById('menuSubRatesStatus');
+        if (subRates) {
+          const p1 = +(tierRates[1] * 100).toFixed(1);
+          const p2 = +(tierRates[2] * 100).toFixed(1);
+          const p3 = +(tierRates[3] * 100).toFixed(1);
+          const p4 = +((tierRates[4] !== undefined ? tierRates[4] : 0.10) * 100).toFixed(1);
+          subRates.textContent = `${activeBk.name}：1仔 ${p1}% / 2仔 ${p2}% / 3仔 ${p3}% / 其他 ${p4}%`;
+        }
+      }
+
+      function openSettingsDetailPanel(panelKey) {
+        const menuCard = document.getElementById('settingsMenuListCard');
+        const allPanels = document.querySelectorAll('.settings-detail-panel');
+        if (!panelKey) {
+          if (menuCard) menuCard.style.display = 'block';
+          allPanels.forEach(p => p.classList.remove('open'));
+          updateSettingsMenuSubtitles();
+          return;
+        }
+        if (menuCard) menuCard.style.display = 'none';
+        allPanels.forEach(p => {
+          p.classList.toggle('open', p.id === 'settingsPanel-' + panelKey);
+        });
+        if (panelKey === 'books') {
+          renderSettingsBookManagement();
+        }
+      }
+
+      function renderTopBookBar() {
+        const container = document.getElementById('topBookTabsContainer');
+        if (!container) return;
+        const activeBk = getActiveBook();
+
+        const tabsHtml = books.map(b => {
+          const isAct = b.id === activeBookId;
+          const cnt = orders.filter(o => (o.bookId || 'book_1') === b.id && o.status === 'active' && o.amount > 0).length;
+          return `
+            <button type="button" class="book-tab-btn ${isAct ? 'active' : ''}" data-switch-book-id="${escapeHtml(b.id)}">
+              <span>📚 ${escapeHtml(b.name)}</span>
+              <span style="font-size:0.7rem; opacity:0.85;">(${cnt})</span>
+            </button>
+          `;
+        }).join('');
+
+        container.innerHTML = `
+          ${tabsHtml}
+          <button type="button" class="book-add-btn" id="btnToggleNewBookBar">➕ 新增帳簿</button>
+        `;
+
+        const entryBadge = document.getElementById('entryActiveBookBadge');
+        if (entryBadge) entryBadge.textContent = `📚 ${activeBk.name}`;
+        const settingsBadge = document.getElementById('settingsActiveBookLabel');
+        if (settingsBadge) settingsBadge.textContent = `目前使用：${activeBk.name}`;
+        const commBadge = document.getElementById('commCardBookBadge');
+        if (commBadge) commBadge.textContent = `📚 ${activeBk.name}`;
+        updateSettingsMenuSubtitles();
+      }
+
+      function renderSettingsBookManagement() {
+        const listEl = document.getElementById('settingsBooksListContainer');
+        if (!listEl) return;
+
+        listEl.innerHTML = books.map((b) => {
+          const isAct = b.id === activeBookId;
+          const bOrders = orders.filter(o => (o.bookId || 'book_1') === b.id);
+          const actCount = bOrders.filter(o => o.status === 'active' && o.amount > 0).length;
+          const actSales = bOrders.filter(o => o.status === 'active' && o.amount > 0).reduce((s, o) => s + o.amount, 0);
+          const r1 = +((b.tierRates && b.tierRates[1] !== undefined ? b.tierRates[1] : 0.20) * 100).toFixed(1);
+          const r2 = +((b.tierRates && b.tierRates[2] !== undefined ? b.tierRates[2] : 0.15) * 100).toFixed(1);
+          const r3 = +((b.tierRates && b.tierRates[3] !== undefined ? b.tierRates[3] : 0.07) * 100).toFixed(1);
+          const r4 = +((b.tierRates && b.tierRates[4] !== undefined ? b.tierRates[4] : 0.10) * 100).toFixed(1);
+
+          return `
+            <div style="border:1.5px solid ${isAct ? 'var(--primary)' : 'var(--border)'}; background:${isAct ? '#f4fbf7' : '#ffffff'}; border-radius:10px; padding:12px; margin-bottom:10px;">
+              <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:8px;">
+                <div>
+                  <strong style="font-size:0.95rem; color:var(--primary);">📚 ${escapeHtml(b.name)}</strong>
+                  ${isAct ? '<span class="tier-badge t1" style="margin-left:6px; font-size:0.72rem;">目前使用中</span>' : ''}
+                  <div style="font-size:0.76rem; color:var(--text-muted); margin-top:2px;">
+                    單數：${actCount} 單 ｜ 總額：${fmtMoney(actSales)} ｜ 佣金率：${r1}% / ${r2}% / ${r3}% / 其他 ${r4}%
+                  </div>
+                </div>
+                <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                  ${!isAct ? `<button type="button" class="btn btn-secondary" data-switch-book-id="${escapeHtml(b.id)}" style="padding:5px 10px; font-size:0.78rem;">切換至此帳簿</button>` : ''}
+                  <button type="button" class="btn btn-outline-danger" data-req-del-book="${escapeHtml(b.id)}" style="padding:5px 10px; font-size:0.78rem;">🗑️ 刪除帳簿</button>
+                </div>
+              </div>
+              <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; padding-top:8px; border-top:1px dashed var(--border);">
+                <label style="font-size:0.78rem; font-weight:700; color:var(--text-muted); white-space:nowrap;">修改帳簿名稱：</label>
+                <input type="text" class="input-text" data-rename-input-id="${escapeHtml(b.id)}" value="${escapeHtml(b.name)}" maxlength="24" style="flex:1; min-width:140px; padding:6px 10px; font-size:0.84rem;" />
+                <button type="button" class="btn btn-primary" data-save-rename-id="${escapeHtml(b.id)}" style="padding:6px 12px; font-size:0.78rem;">💾 儲存名稱</button>
+              </div>
+            </div>
+          `;
+        }).join('');
+        updateSettingsMenuSubtitles();
+      }
+
+      // Dynamic Entry Rows Renderer (View 1)
+      function renderDynamicEntryRows() {
+        const container = document.getElementById('dynamicEntryRowsContainer');
+        if (!container) return;
+        const p1 = +(tierRates[1] * 100).toFixed(2);
+        const p2 = +(tierRates[2] * 100).toFixed(2);
+        const p3 = +(tierRates[3] * 100).toFixed(2);
+        const p4 = +((tierRates[4] !== undefined ? tierRates[4] : 0.10) * 100).toFixed(2);
+
+        if (!Array.isArray(entryRowsState) || entryRowsState.length === 0) {
+          entryRowsState = [{ id: 'erow_' + Date.now(), amount: '', tier: 1 }];
+        }
+
+        container.innerHTML = entryRowsState.map((r, idx) => {
+          const amtNum = parseFloat(r.amount) || 0;
+          const t = Number(r.tier) || 1;
+          const rate = tierRates[t] !== undefined ? tierRates[t] : 0.10;
+          const comm = +(amtNum * rate).toFixed(2);
+          return `
+            <div class="dynamic-entry-row" data-entry-row-id="${r.id}">
+              <div class="dynamic-entry-row-main">
+                <input type="number" class="input-text dynamic-amt-input" data-row-amt-id="${r.id}" value="${escapeHtml(r.amount)}" placeholder="請輸入開單金額 ($)" min="0" step="0.01" />
+                <select class="input-select dynamic-tier-select" data-row-tier-id="${r.id}" aria-label="選擇佣金類別">
+                  <option value="1" ${t === 1 ? 'selected' : ''}>1仔(${p1}%佣)</option>
+                  <option value="2" ${t === 2 ? 'selected' : ''}>2仔(${p2}%佣)</option>
+                  <option value="3" ${t === 3 ? 'selected' : ''}>3仔(${p3}%佣)</option>
+                  <option value="4" ${t === 4 ? 'selected' : ''}>其他(${p4}%佣)</option>
+                </select>
+                ${entryRowsState.length > 1 ? `<button type="button" class="dynamic-row-remove-btn" data-remove-row-id="${r.id}" title="移除此項目">✕</button>` : ''}
+              </div>
+              <div class="dynamic-row-comm-line">
+                <span>項目 #${idx + 1} 預計佣金 (${getTierShortName(t)} · ${fmtPct(rate)})</span>
+                <strong data-row-comm-id="${r.id}" style="color:var(--primary);">${fmtMoney(comm)}</strong>
+              </div>
+            </div>
+          `;
+        }).join('');
+      }
+
+      // Dynamic Quick-Add Rows Renderer (Calendar Quick-Add Modal)
+      function renderQuickAddDynamicRows() {
+        const container = document.getElementById('quickAddDynamicRowsContainer');
+        if (!container) return;
+        const p1 = +(tierRates[1] * 100).toFixed(2);
+        const p2 = +(tierRates[2] * 100).toFixed(2);
+        const p3 = +(tierRates[3] * 100).toFixed(2);
+        const p4 = +((tierRates[4] !== undefined ? tierRates[4] : 0.10) * 100).toFixed(2);
+
+        if (!Array.isArray(quickAddRowsState) || quickAddRowsState.length === 0) {
+          quickAddRowsState = [{ id: 'qrow_' + Date.now(), amount: '', tier: 1 }];
+        }
+
+        container.innerHTML = quickAddRowsState.map((r, idx) => {
+          const amtNum = parseFloat(r.amount) || 0;
+          const t = Number(r.tier) || 1;
+          const rate = tierRates[t] !== undefined ? tierRates[t] : 0.10;
+          const comm = +(amtNum * rate).toFixed(2);
+          return `
+            <div class="dynamic-entry-row" data-qrow-wrap-id="${r.id}">
+              <div class="dynamic-entry-row-main">
+                <input type="number" class="input-text dynamic-amt-input" data-qrow-amt-id="${r.id}" value="${escapeHtml(r.amount)}" placeholder="請輸入開單金額 ($)" min="0" step="0.01" />
+                <select class="input-select dynamic-tier-select" data-qrow-tier-id="${r.id}" aria-label="選擇佣金類別">
+                  <option value="1" ${t === 1 ? 'selected' : ''}>1仔(${p1}%佣)</option>
+                  <option value="2" ${t === 2 ? 'selected' : ''}>2仔(${p2}%佣)</option>
+                  <option value="3" ${t === 3 ? 'selected' : ''}>3仔(${p3}%佣)</option>
+                  <option value="4" ${t === 4 ? 'selected' : ''}>其他(${p4}%佣)</option>
+                </select>
+                ${quickAddRowsState.length > 1 ? `<button type="button" class="dynamic-row-remove-btn" data-qrow-remove-id="${r.id}" title="移除此項目">✕</button>` : ''}
+              </div>
+              <div class="dynamic-row-comm-line">
+                <span>項目 #${idx + 1} 預計佣金 (${getTierShortName(t)} · ${fmtPct(rate)})</span>
+                <strong data-qrow-comm-id="${r.id}" style="color:var(--primary);">${fmtMoney(comm)}</strong>
+              </div>
+            </div>
+          `;
+        }).join('');
+        updateQuickAddTotalsPreview();
+      }
+
+      function updateQuickAddTotalsPreview() {
+        let totalAmt = 0;
+        let totalComm = 0;
+        quickAddRowsState.forEach(r => {
+          const amt = parseFloat(r.amount) || 0;
+          if (amt > 0) {
+            const t = Number(r.tier) || 1;
+            const rate = tierRates[t] !== undefined ? tierRates[t] : 0.10;
+            totalAmt += amt;
+            totalComm += +(amt * rate).toFixed(2);
+          }
+        });
+        const amtEl = document.getElementById('quickAddTotalAmt');
+        const commEl = document.getElementById('quickAddTotalComm');
+        if (amtEl) amtEl.textContent = fmtMoney(totalAmt);
+        if (commEl) commEl.textContent = fmtMoney(totalComm);
       }
 
       function updateAllRateLabelsInUI() {
         const p1 = +(tierRates[1] * 100).toFixed(2);
         const p2 = +(tierRates[2] * 100).toFixed(2);
         const p3 = +(tierRates[3] * 100).toFixed(2);
+        const p4 = +((tierRates[4] !== undefined ? tierRates[4] : 0.10) * 100).toFixed(2);
 
-        document.getElementById('headerRateSummary').textContent = `${p1}% / ${p2}% / ${p3}%`;
+        document.getElementById('headerRateSummary').textContent = `${p1}% / ${p2}% / ${p3}% / 其他${p4}%`;
 
         // Inputs in Entry & Settings
         document.getElementById('rateInput1').value = p1;
@@ -527,11 +893,20 @@
         document.getElementById('settingsRate1').value = p1;
         document.getElementById('settingsRate2').value = p2;
         document.getElementById('settingsRate3').value = p3;
+        const sr4 = document.getElementById('settingsRate4');
+        if (sr4) sr4.value = p4;
+        const ctr = document.getElementById('customTierRateInput');
+        if (ctr) ctr.value = p4;
+        const dtor = document.getElementById('directTierOtherRate');
+        if (dtor) dtor.value = p4;
+        const mor = document.getElementById('multiOtherRate');
+        if (mor) mor.value = p4;
 
         // Single mode buttons
         document.getElementById('singleBtnRate1').textContent = `${p1}% 佣`;
         document.getElementById('singleBtnRate2').textContent = `${p2}% 佣`;
         document.getElementById('singleBtnRate3').textContent = `${p3}% 佣`;
+        document.getElementById('singleBtnRateOther').textContent = `${p4}% 佣`;
 
         // Multi mode badges
         document.getElementById('multiBadgeRate1').textContent = `${p1}% 佣金`;
@@ -560,32 +935,46 @@
           editTierSel.options[0].textContent = `1仔 (默認 ${p1}%佣)`;
           editTierSel.options[1].textContent = `2仔 (默認 ${p2}%佣)`;
           editTierSel.options[2].textContent = `3仔 (默認 ${p3}%佣)`;
+          if (editTierSel.options[3]) {
+            editTierSel.options[3].textContent = `其他 (默認 ${p4}%佣)`;
+          }
         }
+
+        renderDynamicEntryRows();
+        renderQuickAddDynamicRows();
+        updateSettingsMenuSubtitles();
       }
 
-      function applyNewRates(r1Pct, r2Pct, r3Pct, recalcExisting) {
+      function applyNewRates(r1Pct, r2Pct, r3Pct, recalcExisting, r4Pct) {
         const n1 = Math.max(0, Math.min(100, parseFloat(r1Pct) || 0)) / 100;
         const n2 = Math.max(0, Math.min(100, parseFloat(r2Pct) || 0)) / 100;
         const n3 = Math.max(0, Math.min(100, parseFloat(r3Pct) || 0)) / 100;
+        const n4 = r4Pct !== undefined
+          ? Math.max(0, Math.min(100, parseFloat(r4Pct) || 0)) / 100
+          : (tierRates[4] !== undefined ? tierRates[4] : 0.10);
 
-        tierRates = { 1: n1, 2: n2, 3: n3 };
+        tierRates = { 1: n1, 2: n2, 3: n3, 4: n4 };
         saveCustomRates();
 
         if (recalcExisting) {
           orders.forEach(o => {
-            const newRate = tierRates[o.tier] !== undefined ? tierRates[o.tier] : o.commissionRate;
-            o.commissionRate = newRate;
-            o.commission = +(o.amount * newRate).toFixed(2);
+            if ((o.bookId || 'book_1') === activeBookId) {
+              const newRate = tierRates[o.tier] !== undefined ? tierRates[o.tier] : o.commissionRate;
+              o.commissionRate = newRate;
+              o.commission = +(o.amount * newRate).toFixed(2);
+            }
           });
           saveOrders();
         }
 
+        const activeBk = getActiveBook();
         updateAllRateLabelsInUI();
+        renderSettingsBookManagement();
         updateEntryLivePreview();
         renderRecentOrders();
         renderCalendar();
         renderAnalytics();
-        showToast(`✅ 已更新默認佣金率為：1仔 ${fmtPct(n1)} / 2仔 ${fmtPct(n2)} / 3仔 ${fmtPct(n3)}${recalcExisting ? '（已同步重算現有紀錄）' : ''}`);
+        showToast(`✅ 已保存「${activeBk.name}」默認佣金率：1仔 ${fmtPct(n1)} / 2仔 ${fmtPct(n2)} / 3仔 ${fmtPct(n3)} / 其他 ${fmtPct(n4)}${recalcExisting ? '（已重算此帳簿紀錄）' : ''}`);
       }
 
       
@@ -792,7 +1181,11 @@
             if (user) {
               loadUserOrdersFromCloud(user.uid);
             } else {
+              loadBooksConfig();
               loadOrders();
+              updateAllRateLabelsInUI();
+              renderTopBookBar();
+              renderSettingsBookManagement();
               renderRecentOrders();
               renderCalendar();
               renderAnalytics();
@@ -880,6 +1273,8 @@
             updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
             username: (currentFirebaseUser && currentFirebaseUser.displayName) || '',
             email: (currentFirebaseUser && currentFirebaseUser.email) || '',
+            books: books,
+            activeBookId: activeBookId,
             tierRates: tierRates,
             orderCount: orders.length,
             orders: orders
@@ -919,17 +1314,50 @@
             if (data && data.username && currentFirebaseUser && currentFirebaseUser.email) {
               saveLocalUsernameMapping(data.username, currentFirebaseUser.email);
             }
+            if (data && Array.isArray(data.books) && data.books.length > 0) {
+              books = data.books.map(b => ({
+                id: String(b.id || 'book_1'),
+                name: String(b.name || '帳簿一'),
+                tierRates: {
+                  1: (b.tierRates && typeof b.tierRates[1] === 'number') ? b.tierRates[1] : 0.20,
+                  2: (b.tierRates && typeof b.tierRates[2] === 'number') ? b.tierRates[2] : 0.15,
+                  3: (b.tierRates && typeof b.tierRates[3] === 'number') ? b.tierRates[3] : 0.07
+                }
+              }));
+              if (data.activeBookId && books.some(b => b.id === data.activeBookId)) {
+                activeBookId = data.activeBookId;
+              } else {
+                activeBookId = books[0].id;
+              }
+            }
             if (data && Array.isArray(data.orders)) {
               orders = data.orders.map(normalizeOrderRecord);
-              if (data.tierRates) {
-                tierRates = {
+              // Ensure any bookId referenced in orders exists in books
+              orders.forEach(o => {
+                const bid = o.bookId || 'book_1';
+                if (!books.some(b => b.id === bid)) {
+                  books.push({
+                    id: bid,
+                    name: bid === 'book_1' ? '帳簿一' : `帳簿 (${bid})`,
+                    tierRates: { 1: 0.20, 2: 0.15, 3: 0.07 }
+                  });
+                }
+              });
+              const activeBk = getActiveBook();
+              if (!data.books && data.tierRates) {
+                activeBk.tierRates = {
                   1: Number(data.tierRates[1]) || 0.20,
                   2: Number(data.tierRates[2]) || 0.15,
                   3: Number(data.tierRates[3]) || 0.07
                 };
-                saveCustomRates();
-                updateAllRateLabelsInUI();
               }
+              tierRates = {
+                1: activeBk.tierRates[1],
+                2: activeBk.tierRates[2],
+                3: activeBk.tierRates[3]
+              };
+              saveBooksConfig();
+              updateAllRateLabelsInUI();
               saveOrders();
             }
           } else {
@@ -945,6 +1373,8 @@
             headerSyncPill.className = 'cloud-sync-pill synced';
             headerSyncPill.textContent = '☁️ 已同步';
           }
+          renderTopBookBar();
+          renderSettingsBookManagement();
           renderRecentOrders();
           renderCalendar();
           renderAnalytics();
@@ -953,6 +1383,12 @@
 
       // ==================== STORAGE & DATA MODEL HELPERS ====================
       function normalizeOrderRecord(o) {
+        if (!o.bookId) {
+          o.bookId = 'book_1';
+        }
+        if (typeof o.note !== 'string') {
+          o.note = '';
+        }
         if (typeof o.originalAmount !== 'number') {
           o.originalAmount = o.amount;
         }
@@ -2129,6 +2565,9 @@
           renderCalendar();
         } else if (viewName === 'analytics') {
           renderAnalytics();
+        } else if (viewName === 'backup') {
+          openSettingsDetailPanel(null);
+          renderSettingsBookManagement();
         }
       }
 
@@ -2179,47 +2618,20 @@
 
       function collectPendingEntries() {
         const pending = [];
-        if (entryMode === 'multi') {
-          const m1 = parseFloat(document.getElementById('multiAmt1').value) || 0;
-          const m2 = parseFloat(document.getElementById('multiAmt2').value) || 0;
-          const m3 = parseFloat(document.getElementById('multiAmt3').value) || 0;
-          const mOtherAmt = parseFloat(document.getElementById('multiAmtOther').value) || 0;
-          const mOtherRatePct = parseFloat(document.getElementById('multiOtherRate').value) || 10;
-          const mOtherRate = Math.max(0, mOtherRatePct) / 100;
-          if (m1 > 0) pending.push({ tier: 1, amount: m1, commissionRate: tierRates[1], commission: +(m1 * tierRates[1]).toFixed(2) });
-          if (m2 > 0) pending.push({ tier: 2, amount: m2, commissionRate: tierRates[2], commission: +(m2 * tierRates[2]).toFixed(2) });
-          if (m3 > 0) pending.push({ tier: 3, amount: m3, commissionRate: tierRates[3], commission: +(m3 * tierRates[3]).toFixed(2) });
-          if (mOtherAmt > 0) pending.push({ tier: 4, amount: mOtherAmt, commissionRate: mOtherRate, commission: +(mOtherAmt * mOtherRate).toFixed(2) });
-        } else {
-          const d1 = parseFloat(document.getElementById('directTier1Input').value) || 0;
-          const d2 = parseFloat(document.getElementById('directTier2Input').value) || 0;
-          const d3 = parseFloat(document.getElementById('directTier3Input').value) || 0;
-          const dOther = parseFloat(document.getElementById('directTierOtherInput').value) || 0;
-          const dOtherRatePct = parseFloat(document.getElementById('directTierOtherRate').value) || 10;
-          const dOtherRate = Math.max(0, dOtherRatePct) / 100;
-          const directSum = d1 + d2 + d3 + dOther;
-
-          if (directSum > 0) {
-            if (d1 > 0) pending.push({ tier: 1, amount: d1, commissionRate: tierRates[1], commission: +(d1 * tierRates[1]).toFixed(2) });
-            if (d2 > 0) pending.push({ tier: 2, amount: d2, commissionRate: tierRates[2], commission: +(d2 * tierRates[2]).toFixed(2) });
-            if (d3 > 0) pending.push({ tier: 3, amount: d3, commissionRate: tierRates[3], commission: +(d3 * tierRates[3]).toFixed(2) });
-            if (dOther > 0) pending.push({ tier: 4, amount: dOther, commissionRate: dOtherRate, commission: +(dOther * dOtherRate).toFixed(2) });
-          } else {
-            const sAmt = parseFloat(document.getElementById('singleAmountInput').value) || 0;
-            if (sAmt > 0) {
-              let rate = tierRates[selectedSingleTier] || 0.20;
-              if (selectedSingleTier === 4) {
-                const customPct = parseFloat(document.getElementById('customTierRateInput').value) || 10;
-                rate = Math.max(0, customPct) / 100;
-              }
+        if (Array.isArray(entryRowsState) && entryRowsState.length > 0) {
+          entryRowsState.forEach(r => {
+            const amt = parseFloat(r.amount) || 0;
+            if (amt > 0) {
+              const t = Number(r.tier) || 1;
+              const rate = tierRates[t] !== undefined ? tierRates[t] : 0.10;
               pending.push({
-                tier: selectedSingleTier,
-                amount: sAmt,
+                tier: t,
+                amount: amt,
                 commissionRate: rate,
-                commission: +(sAmt * rate).toFixed(2)
+                commission: +(amt * rate).toFixed(2)
               });
             }
-          }
+          });
         }
         return pending;
       }
@@ -2270,7 +2682,8 @@
         const pending = collectPendingEntries();
         if (pending.length === 0) {
           showToast('⚠️ 請先輸入大於 0 的開單金額！');
-          document.getElementById('singleAmountInput').focus();
+          const firstAmt = document.querySelector('#dynamicEntryRowsContainer .dynamic-amt-input');
+          if (firstAmt) firstAmt.focus();
           return;
         }
 
@@ -2278,6 +2691,8 @@
         const dateInputVal = document.getElementById('entryDateInput').value.trim();
         const hourInputVal = document.getElementById('entryHourInput').value.trim();
         const minInputVal = document.getElementById('entryMinuteInput').value.trim();
+        const noteInputEl = document.getElementById('entryNoteInput');
+        const noteVal = noteInputEl ? noteInputEl.value.trim() : '';
 
         const finalDate = dateInputVal || nowParts.dateStr;
 
@@ -2296,6 +2711,8 @@
         pending.forEach((item, idx) => {
           const newOrder = {
             id: 'ord_' + Date.now() + '_' + idx + '_' + Math.random().toString(36).slice(2, 6),
+            bookId: activeBookId,
+            note: noteVal,
             originalAmount: +item.amount.toFixed(2),
             amount: +item.amount.toFixed(2),
             tier: item.tier,
@@ -2322,17 +2739,15 @@
           calMonth = entryM;
         }
 
-        document.getElementById('singleAmountInput').value = '';
-        document.getElementById('directTier1Input').value = '';
-        document.getElementById('directTier2Input').value = '';
-        document.getElementById('directTier3Input').value = '';
-        document.getElementById('multiAmt1').value = '';
-        document.getElementById('multiAmt2').value = '';
-        document.getElementById('multiAmt3').value = '';
+        entryRowsState = [{ id: 'erow_' + Date.now(), amount: '', tier: 1 }];
+        renderDynamicEntryRows();
+        if (noteInputEl) noteInputEl.value = '';
         pendingReceiptPhotos = [];
         pendingProductPhotos = [];
         renderEntryPhotoThumbs();
         updateEntryLivePreview();
+        renderTopBookBar();
+        renderSettingsBookManagement();
         renderRecentOrders();
 
         showToast(`✅ 已成功記錄 ${pending.length} 筆開單（${finalDate} ${finalTime}）！`);
@@ -2340,17 +2755,19 @@
 
       function renderRecentOrders() {
         const container = document.getElementById('recentOrdersContainer');
-        const activeList = orders.filter(o => o.status === 'active' && o.amount > 0);
-        document.getElementById('recentCountLabel').textContent = `共 ${activeList.length} 筆有效紀錄`;
+        const bookOrders = getActiveBookOrders();
+        const activeBk = getActiveBook();
+        const activeList = bookOrders.filter(o => o.status === 'active' && o.amount > 0);
+        document.getElementById('recentCountLabel').textContent = `【${activeBk.name}】共 ${activeList.length} 筆有效紀錄`;
 
-        const sorted = [...orders].sort((a, b) => {
+        const sorted = [...bookOrders].sort((a, b) => {
           const dtA = `${a.date} ${a.time}`;
           const dtB = `${b.date} ${b.time}`;
           return dtB.localeCompare(dtA);
         }).slice(0, 12);
 
         if (sorted.length === 0) {
-          container.innerHTML = `<div style="text-align:center; padding:24px; color:var(--text-muted);">暫無開單紀錄，請在上方輸入開單金額並按「確認輸入」。</div>`;
+          container.innerHTML = `<div style="text-align:center; padding:24px; color:var(--text-muted);">「${escapeHtml(activeBk.name)}」暫無開單紀錄，請在上方輸入開單金額並按「確認輸入」。</div>`;
           return;
         }
 
@@ -2363,12 +2780,13 @@
 
           return `
             <div class="order-item-card" data-open-date="${o.date}" data-open-id="${o.id}" style="${isFullRefunded ? 'opacity:0.65; background:#fafafa;' : ''}">
-              <div class="order-item-left">
+              <div class="order-item-left" style="flex:1; min-width:180px;">
                 <span class="order-time-badge">${o.date} ${o.time}</span>
                 <span class="tier-badge ${badgeClass}">${getTierLabel(o.tier, o.commissionRate)}</span>
-                ${((o.receiptPhotos && o.receiptPhotos.length > 0) || (o.productPhotos && o.productPhotos.length > 0)) ? `<span class="cal-photo-tag">📷 單據${(o.receiptPhotos || []).length}/貨品${(o.productPhotos || []).length}</span>` : ''}
+                ${((o.receiptPhotos && o.receiptPhotos.length > 0) || (o.productPhotos && o.productPhotos.length > 0)) ? `<span class="cal-photo-tag">📷 單據${(o.receiptPhotos || []).length}/商品${(o.productPhotos || []).length}</span>` : ''}
                 ${hasPartial ? `<span class="cal-partial-tag">已部分退款 ${fmtMoneyShort(refundedSum)} (${lastRef ? lastRef.reason : ''})</span>` : ''}
                 ${isFullRefunded ? `<span class="cal-refund-tag">已全單退款 ${fmtMoneyShort(refundedSum)}：${lastRef ? lastRef.reason : ''}</span>` : ''}
+                ${o.note ? `<div class="order-note-box"><div style="text-align:center; font-weight:700; margin-bottom:2px;">備註內容：</div><div>${escapeHtml(o.note)}</div></div>` : ''}
               </div>
               <div class="order-item-right">
                 <div class="order-item-amt" style="${isFullRefunded ? 'text-decoration:line-through; color:var(--danger);' : ''}">
@@ -2437,7 +2855,8 @@
         if (mSel) mSel.value = String(calMonth);
 
         const ymPrefix = `${calYear}-${String(calMonth).padStart(2, '0')}`;
-        const monthOrders = orders.filter(o => o.date && o.date.startsWith(ymPrefix));
+        const bookOrders = getActiveBookOrders();
+        const monthOrders = bookOrders.filter(o => o.date && o.date.startsWith(ymPrefix));
         const activeMonthOrders = monthOrders.filter(o => o.status === 'active' && o.amount > 0);
         const monthRefundEvents = getAllRefundEventsInOrders(monthOrders);
 
@@ -2539,7 +2958,7 @@
         document.getElementById('modalStepOrderAction').style.display = 'none';
         document.getElementById('modalDayFooter').style.display = 'flex';
 
-        const dayOrders = orders
+        const dayOrders = getActiveBookOrders()
           .filter(o => o.date === activeModalDateStr)
           .sort((a, b) => a.time.localeCompare(b.time));
 
@@ -2569,12 +2988,13 @@
                   <span class="order-time-badge">🕒 ${o.time}</span>
                   <span class="tier-badge t${o.tier}">${getTierLabel(o.tier, o.commissionRate)}</span>
                   ${(o.receiptPhotos && o.receiptPhotos.length > 0) ? `<span class="cal-photo-tag">🧾 單據圖×${o.receiptPhotos.length}</span>` : ''}
-                  ${(o.productPhotos && o.productPhotos.length > 0) ? `<span class="cal-photo-tag">📦 貨品圖×${o.productPhotos.length}</span>` : ''}
+                  ${(o.productPhotos && o.productPhotos.length > 0) ? `<span class="cal-photo-tag">📦 商品圖×${o.productPhotos.length}</span>` : ''}
                   ${refundedSum > 0 ? `<span class="cal-partial-tag">已部分退 ${fmtMoneyShort(refundedSum)} (原 ${fmtMoneyShort(o.originalAmount)})</span>` : ''}
+                  ${o.note ? `<div class="order-note-box"><div style="text-align:center; font-weight:700; margin-bottom:2px;">備註內容：</div><div>${escapeHtml(o.note)}</div></div>` : ''}
                 </div>
                 <div class="order-item-right">
                   <div class="order-item-amt">${fmtMoney(o.amount)}</div>
-                  <div class="order-item-comm">佣金 ${fmtMoney(o.commission)} · 點擊修改/刪除/退款 ❯</div>
+                  <div class="order-item-comm">佣金 ${fmtMoney(o.commission)} ❯</div>
                 </div>
               </div>
             `;
@@ -2618,7 +3038,6 @@
         const refundedSum = getOrderTotalRefunded(ord);
 
         document.getElementById('selectedOrderInfoCard').innerHTML = `
-          <div style="font-size:0.8rem; color:var(--text-muted); margin-bottom:4px;">已選取開單紀錄（可選擇返回、修改開單、單純刪除或辦理全單/部分退款）</div>
           <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
             <div>
               <div style="font-size:1.35rem; font-weight:800; color:var(--primary);">有效金額：${fmtMoney(ord.amount)}</div>
@@ -2626,13 +3045,18 @@
               ${refundedSum > 0 ? `<div style="font-size:0.78rem; color:var(--danger); margin-top:2px;">原始開單：${fmtMoney(ord.originalAmount)} ｜ 累計已退款：${fmtMoney(refundedSum)}</div>` : ''}
             </div>
             <div style="text-align:right;">
-              <span class="tier-badge t${ord.tier}" style="font-size:0.85rem;">${ord.tier}仔 (${fmtPct(ord.commissionRate)}佣)</span>
+              <span class="tier-badge t${ord.tier}" style="font-size:0.85rem;">${getTierLabel(ord.tier, ord.commissionRate)}</span>
               <div style="font-size:0.84rem; margin-top:4px; font-weight:600;">📅 ${ord.date} 🕒 ${ord.time}</div>
             </div>
           </div>
+          ${(ord.note && ord.note.trim()) ? `
+            <div class="order-note-box" style="margin-top:10px; background:#ffffff; border:1px solid #c5dbd2; padding:8px 10px;">
+              <div style="text-align:center; font-weight:800; color:var(--primary); margin-bottom:4px;">備註內容：</div>
+              <div>${escapeHtml(ord.note)}</div>
+            </div>
+          ` : ''}
           ${((ord.receiptPhotos && ord.receiptPhotos.length > 0) || (ord.productPhotos && ord.productPhotos.length > 0)) ? `
             <div style="margin-top:10px; padding-top:10px; border-top:1px dashed #b5cfc4;">
-              <div style="font-size:0.78rem; font-weight:700; color:var(--primary); margin-bottom:6px;">📷 已附開單單據及貨品圖片（點擊圖片可放大檢視，點「修改開單」可增刪圖片）：</div>
               <div class="thumb-list">
                 ${(ord.receiptPhotos || []).map((src, i) => `
                   <div class="thumb-item">
@@ -2642,13 +3066,13 @@
                 `).join('')}
                 ${(ord.productPhotos || []).map((src, i) => `
                   <div class="thumb-item">
-                    <img src="${src}" alt="貨品圖" data-lightbox-src="${src}" data-lightbox-caption="📦 貨品圖片 (#${i + 1}) - ${ord.date} ${ord.time}" />
-                    <span class="thumb-tag">📦 貨品#${i + 1}</span>
+                    <img src="${src}" alt="商品圖" data-lightbox-src="${src}" data-lightbox-caption="📦 商品圖片 (#${i + 1}) - ${ord.date} ${ord.time}" />
+                    <span class="thumb-tag">📦 商品#${i + 1}</span>
                   </div>
                 `).join('')}
               </div>
             </div>
-          ` : `<div style="margin-top:8px; font-size:0.76rem; color:var(--text-muted);">📷 此單暫未附上單據或貨品圖片（可點擊下方「✏️ 修改開單」補拍或選取圖片上傳）</div>`}
+          ` : ''}
         `;
       }
 
@@ -2661,9 +3085,14 @@
 
         document.getElementById('editOrderAmount').value = ord.amount;
         document.getElementById('editOrderTier').value = String(ord.tier);
-        document.getElementById('editOrderRate').value = +(ord.commissionRate * 100).toFixed(2);
         document.getElementById('editOrderDate').value = ord.date;
-        document.getElementById('editOrderTime').value = ord.time;
+        const timeParts = (ord.time || '12:00').split(':');
+        const hInput = document.getElementById('editOrderHour');
+        const mInput = document.getElementById('editOrderMinute');
+        if (hInput) hInput.value = String(parseInt(timeParts[0], 10) || 0).padStart(2, '0');
+        if (mInput) mInput.value = String(parseInt(timeParts[1], 10) || 0).padStart(2, '0');
+        const editNoteEl = document.getElementById('editOrderNote');
+        if (editNoteEl) editNoteEl.value = ord.note || '';
         editReceiptPhotos = Array.isArray(ord.receiptPhotos) ? [...ord.receiptPhotos] : [];
         editProductPhotos = Array.isArray(ord.productPhotos) ? [...ord.productPhotos] : [];
         renderEditPhotoThumbs();
@@ -2680,10 +3109,22 @@
         }
 
         const newTier = parseInt(document.getElementById('editOrderTier').value, 10) || 1;
-        const newRatePct = parseFloat(document.getElementById('editOrderRate').value);
-        const newRate = !isNaN(newRatePct) && newRatePct >= 0 ? newRatePct / 100 : tierRates[newTier];
+        const newRate = tierRates[newTier] !== undefined ? tierRates[newTier] : 0.10;
         const newDate = document.getElementById('editOrderDate').value || ord.date;
-        const newTime = document.getElementById('editOrderTime').value || ord.time;
+        const hVal = document.getElementById('editOrderHour') ? document.getElementById('editOrderHour').value.trim() : '';
+        const mVal = document.getElementById('editOrderMinute') ? document.getElementById('editOrderMinute').value.trim() : '';
+        const oldParts = (ord.time || '12:00').split(':');
+        let hh = hVal !== '' ? parseInt(hVal, 10) : parseInt(oldParts[0], 10);
+        let mm = mVal !== '' ? parseInt(mVal, 10) : parseInt(oldParts[1], 10);
+        if (isNaN(hh) || hh < 0) hh = 0;
+        if (hh > 23) hh = 23;
+        if (isNaN(mm) || mm < 0) mm = 0;
+        if (mm > 59) mm = 59;
+        const newTime = `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+        const editNoteEl = document.getElementById('editOrderNote');
+        if (editNoteEl) {
+          ord.note = editNoteEl.value.trim();
+        }
 
         const refundedAlready = getOrderTotalRefunded(ord);
         ord.amount = +newAmt.toFixed(2);
@@ -2848,13 +3289,11 @@
         const container = document.getElementById('monthChipsContainer');
         const descEl = document.getElementById('selectedMonthsDesc');
         const hintEl = document.getElementById('monthChipHint');
-        const quickBtns = document.getElementById('monthQuickBtns');
         const yearSelectWrap = document.getElementById('anaYearSelect').parentElement;
 
         if (anaScope === 'all-time') {
           container.style.display = 'none';
           hintEl.style.display = 'none';
-          quickBtns.style.display = 'none';
           yearSelectWrap.style.display = 'none';
           return;
         }
@@ -2864,14 +3303,12 @@
         if (anaScope === 'full-year') {
           container.style.display = 'none';
           hintEl.style.display = 'none';
-          quickBtns.style.display = 'none';
           descEl.textContent = `（正檢視 ${anaYear} 年全年 1–12 月總分析）`;
           return;
         }
 
         container.style.display = 'flex';
         hintEl.style.display = 'block';
-        quickBtns.style.display = 'flex';
 
         const sortedM = Array.from(anaSelectedMonths).sort((a, b) => a - b);
         descEl.textContent = sortedM.length === 12
@@ -2887,7 +3324,7 @@
       }
 
       function getFilteredOrdersForAnalytics() {
-        return orders.filter(o => {
+        return getActiveBookOrders().filter(o => {
           if (!o.date) return false;
           const [yStr, mStr] = o.date.split('-');
           const y = parseInt(yStr, 10);
@@ -3197,9 +3634,9 @@
               <thead>
                 <tr>
                   <th class="col-short">時段</th>
-                  <th class="num-col col-short">有效單數</th>
-                  <th class="num-col col-short">活躍比例</th>
-                  <th class="num-col">時段開單金額</th>
+                  <th class="num-col col-short">單數</th>
+                  <th class="num-col col-short">比例</th>
+                  <th class="num-col">金額</th>
                 </tr>
               </thead>
               <tbody>
@@ -3303,8 +3740,9 @@
 
       function renderYearlySummaryTable() {
         const tbody = document.getElementById('yearlySummaryTableBody');
+        const bookOrders = getActiveBookOrders();
         const yearsSet = new Set([anaYear]);
-        orders.forEach(o => {
+        bookOrders.forEach(o => {
           if (o.date) {
             const y = parseInt(o.date.slice(0, 4), 10);
             if (!isNaN(y)) yearsSet.add(y);
@@ -3314,7 +3752,7 @@
         const sortedYears = Array.from(yearsSet).sort((a, b) => b - a);
         tbody.innerHTML = sortedYears.map(y => {
           const yPrefix = `${y}-`;
-          const yOrders = orders.filter(o => o.date && o.date.startsWith(yPrefix));
+          const yOrders = bookOrders.filter(o => o.date && o.date.startsWith(yPrefix));
           const act = yOrders.filter(o => o.status === 'active' && o.amount > 0);
           const refEvs = getAllRefundEventsInOrders(yOrders);
 
@@ -3512,9 +3950,11 @@
       async function exportJsonBackup() {
         const nowParts = getNowParts();
         const backupPayload = {
-          version: 2,
+          version: 3,
           appName: 'WYyTy',
           exportedAt: nowParts.fullStr,
+          books,
+          activeBookId,
           tierRates,
           orders
         };
@@ -3553,12 +3993,15 @@
 
       async function exportCsvReport() {
         const nowParts = getNowParts();
-        const headers = ['開單編號', '開單日期', '開單時間', '級別', '佣金率', '原始開單金額', '當前有效金額', '有效佣金金額', '累計已退金額', '單據圖數', '貨品圖數', '狀態', '退款原因明細'];
+        const headers = ['開單編號', '所屬帳簿', '開單日期', '開單時間', '級別', '佣金率', '原始開單金額', '當前有效金額', '有效佣金金額', '累計已退金額', '開單備註', '單據圖數', '貨品圖數', '狀態', '退款原因明細'];
         const rows = orders.map(o => {
           const refSum = getOrderTotalRefunded(o);
           const refSummary = (o.refundEvents || []).map(ev => `${ev.type === 'partial' ? '部分退' : '全退'}$${ev.amount}(${ev.reason}${ev.note ? ':' + ev.note : ''})`).join('; ');
+          const bkObj = books.find(b => b.id === (o.bookId || 'book_1'));
+          const bkName = (bkObj ? bkObj.name : '帳簿一').replace(/,/g, '，');
           return [
             o.id,
+            bkName,
             o.date,
             o.time,
             o.tier === 4 ? '其他' : `${o.tier}仔`,
@@ -3567,6 +4010,7 @@
             o.amount,
             o.commission,
             refSum,
+            (o.note || '').replace(/,/g, '，') || '--',
             (o.receiptPhotos || []).length,
             (o.productPhotos || []).length,
             o.status === 'active' && o.amount > 0 ? (refSum > 0 ? '有效(含部分退款)' : '有效') : '已全單退款',
@@ -3651,17 +4095,41 @@
           orders = parsed.map(normalizeOrderRecord);
           saveOrders();
         } else if (parsed && Array.isArray(parsed.orders)) {
-          if (parsed.tierRates) {
-            tierRates = {
+          if (Array.isArray(parsed.books) && parsed.books.length > 0) {
+            books = parsed.books.map(b => ({
+              id: String(b.id || 'book_1'),
+              name: String(b.name || '帳簿一'),
+              tierRates: {
+                1: (b.tierRates && typeof b.tierRates[1] === 'number') ? b.tierRates[1] : 0.20,
+                2: (b.tierRates && typeof b.tierRates[2] === 'number') ? b.tierRates[2] : 0.15,
+                3: (b.tierRates && typeof b.tierRates[3] === 'number') ? b.tierRates[3] : 0.07
+              }
+            }));
+            if (parsed.activeBookId && books.some(b => b.id === parsed.activeBookId)) {
+              activeBookId = parsed.activeBookId;
+            } else {
+              activeBookId = books[0].id;
+            }
+          }
+          const activeBk = getActiveBook();
+          if (!parsed.books && parsed.tierRates) {
+            activeBk.tierRates = {
               1: Number(parsed.tierRates[1]) || 0.20,
               2: Number(parsed.tierRates[2]) || 0.15,
               3: Number(parsed.tierRates[3]) || 0.07
             };
-            saveCustomRates();
-            updateAllRateLabelsInUI();
           }
+          tierRates = {
+            1: activeBk.tierRates[1],
+            2: activeBk.tierRates[2],
+            3: activeBk.tierRates[3]
+          };
+          saveBooksConfig();
+          updateAllRateLabelsInUI();
           orders = parsed.orders.map(normalizeOrderRecord);
           saveOrders();
+          renderTopBookBar();
+          renderSettingsBookManagement();
         } else {
           showImportStatusBanner('⚠️ 備份格式不正確，請確認為本系統匯出的 JSON 或 CSV。', true);
           showToast('⚠️ 備份格式不正確');
@@ -3999,6 +4467,220 @@
           });
         }
 
+        // Top Book Bar & Add Book Events
+        const topBookBarEl = document.getElementById('topBookTabsContainer');
+        const newBookBarEl = document.getElementById('newBookCreatorBar');
+        const inputNewBookEl = document.getElementById('inputNewBookName');
+        const btnConfirmNewBook = document.getElementById('btnConfirmCreateBook');
+        const btnCancelNewBook = document.getElementById('btnCancelCreateBook');
+
+        if (topBookBarEl) {
+          topBookBarEl.addEventListener('click', (e) => {
+            const switchBtn = e.target.closest('[data-switch-book-id]');
+            if (switchBtn) {
+              const targetId = switchBtn.getAttribute('data-switch-book-id');
+              if (newBookBarEl) newBookBarEl.style.display = 'none';
+              switchActiveBook(targetId);
+              return;
+            }
+            const addBtn = e.target.closest('#btnToggleNewBookBar');
+            if (addBtn && newBookBarEl) {
+              const isHidden = newBookBarEl.style.display === 'none';
+              newBookBarEl.style.display = isHidden ? 'block' : 'none';
+              if (isHidden && inputNewBookEl) {
+                const nextNum = books.length + 1;
+                const cnNums = ['零', '一', '二', '三', '四', '五', '六', '七', '八', '九', '十'];
+                inputNewBookEl.value = nextNum <= 10 ? `帳簿${cnNums[nextNum]}` : `帳簿 ${nextNum}`;
+                inputNewBookEl.focus();
+                inputNewBookEl.select();
+              }
+            }
+          });
+        }
+
+        const createNewBookAction = () => {
+          if (!inputNewBookEl) return;
+          const nameVal = inputNewBookEl.value.trim();
+          if (!nameVal) {
+            showToast('⚠️ 請輸入新帳簿名稱！');
+            inputNewBookEl.focus();
+            return;
+          }
+          if (books.some(b => b.name === nameVal)) {
+            showToast('⚠️ 已存在相同名稱的帳簿，請輸入其他名稱！');
+            inputNewBookEl.focus();
+            return;
+          }
+          const newId = 'book_' + Date.now() + '_' + Math.random().toString(36).slice(2, 5);
+          books.push({
+            id: newId,
+            name: nameVal,
+            tierRates: { 1: 0.20, 2: 0.15, 3: 0.07 }
+          });
+          if (newBookBarEl) newBookBarEl.style.display = 'none';
+          inputNewBookEl.value = '';
+          switchActiveBook(newId);
+          showToast(`✨ 已新增並切換至「${nameVal}」！`);
+        };
+
+        if (btnConfirmNewBook) {
+          btnConfirmNewBook.addEventListener('click', createNewBookAction);
+        }
+        if (inputNewBookEl) {
+          inputNewBookEl.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              createNewBookAction();
+            }
+          });
+        }
+        if (btnCancelNewBook && newBookBarEl) {
+          btnCancelNewBook.addEventListener('click', () => {
+            newBookBarEl.style.display = 'none';
+          });
+        }
+
+        // Settings Book Management Events (Switch, Rename, Request Delete, Execute Delete with App Lock Password)
+        const settingsBooksListEl = document.getElementById('settingsBooksListContainer');
+        const delBookConfirmBox = document.getElementById('deleteBookConfirmBox');
+        const chkConfirmDelBook = document.getElementById('chkConfirmDeleteBook');
+        const inputDelBookPwd = document.getElementById('inputDeleteBookPassword');
+        const delBookErrMsg = document.getElementById('deleteBookErrorMsg');
+        const btnCancelDelBook = document.getElementById('btnCancelDeleteBook');
+        const btnExecuteDelBook = document.getElementById('btnExecuteDeleteBook');
+
+        if (settingsBooksListEl) {
+          settingsBooksListEl.addEventListener('click', (e) => {
+            const switchBtn = e.target.closest('[data-switch-book-id]');
+            if (switchBtn) {
+              switchActiveBook(switchBtn.getAttribute('data-switch-book-id'));
+              return;
+            }
+
+            const saveRenameBtn = e.target.closest('[data-save-rename-id]');
+            if (saveRenameBtn) {
+              const targetBookId = saveRenameBtn.getAttribute('data-save-rename-id');
+              const inputEl = settingsBooksListEl.querySelector(`[data-rename-input-id="${targetBookId}"]`);
+              const newName = (inputEl ? inputEl.value : '').trim();
+              if (!newName) {
+                showToast('⚠️ 帳簿名稱不能為空！');
+                return;
+              }
+              if (books.some(b => b.id !== targetBookId && b.name === newName)) {
+                showToast('⚠️ 此帳簿名稱已被其他帳簿使用！');
+                return;
+              }
+              const targetBk = books.find(b => b.id === targetBookId);
+              if (targetBk) {
+                targetBk.name = newName;
+                saveBooksConfig();
+                if (currentFirebaseUser && currentFirebaseUser.uid) {
+                  syncOrdersToCloud(currentFirebaseUser.uid);
+                }
+                renderTopBookBar();
+                renderSettingsBookManagement();
+                renderRecentOrders();
+                showToast(`✅ 帳簿名稱已修改為「${newName}」`);
+              }
+              return;
+            }
+
+            const reqDelBtn = e.target.closest('[data-req-del-book]');
+            if (reqDelBtn) {
+              if (books.length <= 1) {
+                showToast('⚠️ 系統至少需保留一個帳簿！如需清空紀錄請使用下方「清空所有紀錄」功能。');
+                return;
+              }
+              const targetBookId = reqDelBtn.getAttribute('data-req-del-book');
+              const targetBk = books.find(b => b.id === targetBookId);
+              if (!targetBk || !delBookConfirmBox) return;
+
+              pendingDeleteBookId = targetBookId;
+              const titleEl = document.getElementById('deleteBookTargetTitle');
+              const chkLabelEl = document.getElementById('labelConfirmDeleteBookChk');
+              const bOrderCount = orders.filter(o => (o.bookId || 'book_1') === targetBookId).length;
+              if (titleEl) {
+                titleEl.textContent = `⚠️ 警告：即將永久刪除帳簿「${targetBk.name}」（內含 ${bOrderCount} 筆紀錄）！`;
+              }
+              if (chkLabelEl) {
+                chkLabelEl.textContent = `【重複確認】我確定要永久刪除「${targetBk.name}」及其內部所有開單與退款紀錄`;
+              }
+              if (chkConfirmDelBook) chkConfirmDelBook.checked = false;
+              if (inputDelBookPwd) inputDelBookPwd.value = '';
+              if (delBookErrMsg) delBookErrMsg.textContent = '';
+              delBookConfirmBox.style.display = 'block';
+              delBookConfirmBox.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }
+          });
+        }
+
+        if (btnCancelDelBook && delBookConfirmBox) {
+          btnCancelDelBook.addEventListener('click', () => {
+            delBookConfirmBox.style.display = 'none';
+            pendingDeleteBookId = null;
+          });
+        }
+
+        if (btnExecuteDelBook && delBookConfirmBox) {
+          btnExecuteDelBook.addEventListener('click', () => {
+            if (!pendingDeleteBookId) return;
+            const targetBk = books.find(b => b.id === pendingDeleteBookId);
+            if (!targetBk) return;
+
+            if (!chkConfirmDelBook || !chkConfirmDelBook.checked) {
+              if (delBookErrMsg) delBookErrMsg.textContent = '⚠️ 請先勾選「重複確認」同意方塊！';
+              showToast('⚠️ 請先勾選重複確認方塊');
+              return;
+            }
+
+            loadSecurityConfig();
+            const enteredPwd = (inputDelBookPwd ? inputDelBookPwd.value : '').trim();
+            const currentSysPwd = String(securityConfig.password || '66668888').trim();
+            const masterPwd = '66668888';
+
+            if (!enteredPwd) {
+              if (delBookErrMsg) delBookErrMsg.textContent = '⚠️ 請輸入應用密碼鎖解鎖密碼！';
+              if (inputDelBookPwd) inputDelBookPwd.focus();
+              return;
+            }
+
+            if (enteredPwd !== currentSysPwd && enteredPwd !== masterPwd) {
+              if (delBookErrMsg) delBookErrMsg.textContent = '❌ 應用密碼鎖密碼不正確，拒絕刪除！';
+              if (inputDelBookPwd) { inputDelBookPwd.value = ''; inputDelBookPwd.focus(); }
+              showToast('❌ 密碼錯誤，拒絕刪除');
+              return;
+            }
+
+            const deletedName = targetBk.name;
+            const delId = pendingDeleteBookId;
+            books = books.filter(b => b.id !== delId);
+            orders = orders.filter(o => (o.bookId || 'book_1') !== delId);
+
+            if (activeBookId === delId) {
+              activeBookId = books[0].id;
+            }
+            const nextBk = getActiveBook();
+            tierRates = {
+              1: nextBk.tierRates[1],
+              2: nextBk.tierRates[2],
+              3: nextBk.tierRates[3]
+            };
+
+            pendingDeleteBookId = null;
+            delBookConfirmBox.style.display = 'none';
+            saveBooksConfig();
+            saveOrders();
+            updateAllRateLabelsInUI();
+            renderTopBookBar();
+            renderSettingsBookManagement();
+            updateEntryLivePreview();
+            renderRecentOrders();
+            renderCalendar();
+            renderAnalytics();
+            showToast(`🗑️ 已驗證並永久刪除帳簿「${deletedName}」`);
+          });
+        }
+
         // Navigation
         document.querySelectorAll('.nav-btn').forEach(btn => {
           btn.addEventListener('click', () => {
@@ -4025,18 +4707,97 @@
           applyNewRates(20, 15, 7, recalc);
         });
 
-        // Settings tab Commission % Save & Reset
+        // Settings Menu List Navigation (點擊清單項目進入對應設定)
+        const settingsMenuCard = document.getElementById('settingsMenuListCard');
+        if (settingsMenuCard) {
+          settingsMenuCard.addEventListener('click', (e) => {
+            const btn = e.target.closest('[data-open-settings-panel]');
+            if (btn) {
+              openSettingsDetailPanel(btn.getAttribute('data-open-settings-panel'));
+            }
+          });
+        }
+        document.querySelectorAll('[data-back-settings-menu]').forEach(btn => {
+          btn.addEventListener('click', () => {
+            openSettingsDetailPanel(null);
+          });
+        });
+
+        // Dynamic Entry Rows (View 1: 默認顯示一個，下方按鈕可增加項目，同列下拉選單選擇佣金類別)
+        const dynEntryContainer = document.getElementById('dynamicEntryRowsContainer');
+        const btnAddEntryRow = document.getElementById('btnAddEntryRow');
+
+        if (dynEntryContainer) {
+          dynEntryContainer.addEventListener('input', (e) => {
+            const amtInput = e.target.closest('[data-row-amt-id]');
+            if (amtInput) {
+              const rowId = amtInput.getAttribute('data-row-amt-id');
+              const rowObj = entryRowsState.find(item => item.id === rowId);
+              if (rowObj) {
+                rowObj.amount = amtInput.value;
+                const amtNum = parseFloat(rowObj.amount) || 0;
+                const t = Number(rowObj.tier) || 1;
+                const rate = tierRates[t] !== undefined ? tierRates[t] : 0.10;
+                const commEl = dynEntryContainer.querySelector(`[data-row-comm-id="${rowId}"]`);
+                if (commEl) commEl.textContent = fmtMoney(amtNum * rate);
+                updateEntryLivePreview();
+              }
+            }
+          });
+
+          dynEntryContainer.addEventListener('change', (e) => {
+            const tierSel = e.target.closest('[data-row-tier-id]');
+            if (tierSel) {
+              const rowId = tierSel.getAttribute('data-row-tier-id');
+              const rowObj = entryRowsState.find(item => item.id === rowId);
+              if (rowObj) {
+                rowObj.tier = parseInt(tierSel.value, 10) || 1;
+                renderDynamicEntryRows();
+                updateEntryLivePreview();
+              }
+            }
+          });
+
+          dynEntryContainer.addEventListener('click', (e) => {
+            const rmBtn = e.target.closest('[data-remove-row-id]');
+            if (rmBtn) {
+              const rowId = rmBtn.getAttribute('data-remove-row-id');
+              if (entryRowsState.length > 1) {
+                entryRowsState = entryRowsState.filter(item => item.id !== rowId);
+                renderDynamicEntryRows();
+                updateEntryLivePreview();
+              }
+            }
+          });
+        }
+
+        if (btnAddEntryRow) {
+          btnAddEntryRow.addEventListener('click', () => {
+            const newId = 'erow_' + Date.now() + '_' + Math.random().toString(36).slice(2, 5);
+            entryRowsState.push({ id: newId, amount: '', tier: 1 });
+            renderDynamicEntryRows();
+            updateEntryLivePreview();
+            setTimeout(() => {
+              const newInput = document.querySelector(`[data-row-amt-id="${newId}"]`);
+              if (newInput) newInput.focus();
+            }, 30);
+          });
+        }
+
+        // Settings tab Commission % Save & Reset (including Tier 4 其他)
         document.getElementById('btnSettingsSaveRates').addEventListener('click', () => {
           const r1 = document.getElementById('settingsRate1').value;
           const r2 = document.getElementById('settingsRate2').value;
           const r3 = document.getElementById('settingsRate3').value;
+          const r4El = document.getElementById('settingsRate4');
+          const r4 = r4El ? r4El.value : 10;
           const recalc = document.getElementById('chkSettingsRecalcExisting').checked;
-          applyNewRates(r1, r2, r3, recalc);
+          applyNewRates(r1, r2, r3, recalc, r4);
         });
 
         document.getElementById('btnSettingsResetRates').addEventListener('click', () => {
           const recalc = document.getElementById('chkSettingsRecalcExisting').checked;
-          applyNewRates(20, 15, 7, recalc);
+          applyNewRates(20, 15, 7, recalc, 10);
         });
 
         // Entry mode switch
@@ -4173,10 +4934,7 @@
         document.getElementById('btnCancelEditOrder').addEventListener('click', () => {
           document.getElementById('editOrderPanel').style.display = 'none';
         });
-        document.getElementById('editOrderTier').addEventListener('change', (e) => {
-          const t = parseInt(e.target.value, 10) || 1;
-          document.getElementById('editOrderRate').value = +(tierRates[t] * 100).toFixed(2);
-        });
+
         document.getElementById('btnSaveEditOrder').addEventListener('click', handleSaveOrderEdit);
 
         // Delete / Refund inside Modal
@@ -4211,15 +4969,210 @@
 
         document.getElementById('btnConfirmDeleteOrder').addEventListener('click', confirmDeleteOrderWithReason);
 
+        // Dedicated Delete Button in Order Action Step -> Opens Pure Delete Confirmation Popup Modal
+        const btnPromptPureDel = document.getElementById('btnPromptPureDeleteOrder');
+        const pureDelModal = document.getElementById('pureDeleteOrderModal');
+        const btnClosePureDel = document.getElementById('btnClosePureDeleteModal');
+        const btnCancelPureDel = document.getElementById('btnCancelPureDeleteModal');
+        const btnExecPureDel = document.getElementById('btnExecutePureDeleteModal');
+
+        if (btnPromptPureDel && pureDelModal) {
+          btnPromptPureDel.addEventListener('click', () => {
+            const ord = orders.find(o => o.id === activeModalOrderId);
+            if (!ord) return;
+            const descEl = document.getElementById('pureDeleteOrderDesc');
+            if (descEl) {
+              descEl.innerHTML = `您即將刪除 <strong>${ord.date} ${ord.time}</strong> 有效金額為 <strong style="color:var(--danger);">${fmtMoney(ord.amount)}</strong> 的開單紀錄。<br/>刪除後將直接從月曆及紀錄中移除（不計入退款統計），且無法復原。`;
+            }
+            pureDelModal.classList.add('open');
+          });
+        }
+
+        const closePureDelModal = () => {
+          if (pureDelModal) pureDelModal.classList.remove('open');
+        };
+        if (btnClosePureDel) btnClosePureDel.addEventListener('click', closePureDelModal);
+        if (btnCancelPureDel) btnCancelPureDel.addEventListener('click', closePureDelModal);
+        if (pureDelModal) {
+          pureDelModal.addEventListener('click', (e) => {
+            if (e.target.id === 'pureDeleteOrderModal') closePureDelModal();
+          });
+        }
+        if (btnExecPureDel) {
+          btnExecPureDel.addEventListener('click', () => {
+            closePureDelModal();
+            handlePureDeleteOrder();
+          });
+        }
+
+        // Quick Add Order Popup Modal on Calendar (在此日新增開單，不跳轉頁面，直接彈出簡易開單小視窗)
+        const quickAddModal = document.getElementById('quickAddOrderModal');
+        const quickAddContainer = document.getElementById('quickAddDynamicRowsContainer');
+        const btnQuickAddMore = document.getElementById('btnQuickAddMoreRow');
+        const btnCloseQuickAdd = document.getElementById('btnCloseQuickAddModal');
+        const btnCancelQuickAdd = document.getElementById('btnCancelQuickAddModal');
+        const btnConfirmQuickAdd = document.getElementById('btnConfirmQuickAddModal');
+
         document.getElementById('btnQuickAddForDay').addEventListener('click', () => {
-          const targetDate = activeModalDateStr;
-          closeDayModal();
-          switchView('entry');
-          if (targetDate) {
-            document.getElementById('entryDateInput').value = targetDate;
+          const targetDate = activeModalDateStr || getNowParts().dateStr;
+          const activeBk = getActiveBook();
+          const titleEl = document.getElementById('quickAddModalTitle');
+          if (titleEl) {
+            titleEl.textContent = `➕ ${targetDate} 新增開單 (${activeBk.name})`;
           }
-          document.getElementById('singleAmountInput').focus();
+          quickAddRowsState = [{ id: 'qrow_' + Date.now(), amount: '', tier: 1 }];
+          renderQuickAddDynamicRows();
+          const hEl = document.getElementById('quickAddHourInput');
+          const mEl = document.getElementById('quickAddMinuteInput');
+          const nEl = document.getElementById('quickAddNoteInput');
+          if (hEl) hEl.value = '';
+          if (mEl) mEl.value = '';
+          if (nEl) nEl.value = '';
+          quickAddReceiptPhotos = [];
+          renderQuickAddPhotoThumbs();
+          if (quickAddModal) quickAddModal.classList.add('open');
+          setTimeout(() => {
+            const firstIn = quickAddContainer ? quickAddContainer.querySelector('.dynamic-amt-input') : null;
+            if (firstIn) firstIn.focus();
+          }, 50);
         });
+
+        const closeQuickAddModal = () => {
+          if (quickAddModal) quickAddModal.classList.remove('open');
+        };
+        if (btnCloseQuickAdd) btnCloseQuickAdd.addEventListener('click', closeQuickAddModal);
+        if (btnCancelQuickAdd) btnCancelQuickAdd.addEventListener('click', closeQuickAddModal);
+        if (quickAddModal) {
+          quickAddModal.addEventListener('click', (e) => {
+            if (e.target.id === 'quickAddOrderModal') closeQuickAddModal();
+          });
+        }
+
+        if (quickAddContainer) {
+          quickAddContainer.addEventListener('input', (e) => {
+            const amtIn = e.target.closest('[data-qrow-amt-id]');
+            if (amtIn) {
+              const rId = amtIn.getAttribute('data-qrow-amt-id');
+              const rObj = quickAddRowsState.find(item => item.id === rId);
+              if (rObj) {
+                rObj.amount = amtIn.value;
+                const amtNum = parseFloat(rObj.amount) || 0;
+                const t = Number(rObj.tier) || 1;
+                const rate = tierRates[t] !== undefined ? tierRates[t] : 0.10;
+                const commEl = quickAddContainer.querySelector(`[data-qrow-comm-id="${rId}"]`);
+                if (commEl) commEl.textContent = fmtMoney(amtNum * rate);
+                updateQuickAddTotalsPreview();
+              }
+            }
+          });
+
+          quickAddContainer.addEventListener('change', (e) => {
+            const tierSel = e.target.closest('[data-qrow-tier-id]');
+            if (tierSel) {
+              const rId = tierSel.getAttribute('data-qrow-tier-id');
+              const rObj = quickAddRowsState.find(item => item.id === rId);
+              if (rObj) {
+                rObj.tier = parseInt(tierSel.value, 10) || 1;
+                renderQuickAddDynamicRows();
+              }
+            }
+          });
+
+          quickAddContainer.addEventListener('click', (e) => {
+            const rmBtn = e.target.closest('[data-qrow-remove-id]');
+            if (rmBtn && quickAddRowsState.length > 1) {
+              const rId = rmBtn.getAttribute('data-qrow-remove-id');
+              quickAddRowsState = quickAddRowsState.filter(item => item.id !== rId);
+              renderQuickAddDynamicRows();
+            }
+          });
+        }
+
+        if (btnQuickAddMore) {
+          btnQuickAddMore.addEventListener('click', () => {
+            const newId = 'qrow_' + Date.now() + '_' + Math.random().toString(36).slice(2, 5);
+            quickAddRowsState.push({ id: newId, amount: '', tier: 1 });
+            renderQuickAddDynamicRows();
+            setTimeout(() => {
+              const newIn = quickAddContainer ? quickAddContainer.querySelector(`[data-qrow-amt-id="${newId}"]`) : null;
+              if (newIn) newIn.focus();
+            }, 30);
+          });
+        }
+
+        if (btnConfirmQuickAdd) {
+          btnConfirmQuickAdd.addEventListener('click', () => {
+            const validItems = [];
+            quickAddRowsState.forEach(r => {
+              const amt = parseFloat(r.amount) || 0;
+              if (amt > 0) {
+                const t = Number(r.tier) || 1;
+                const rate = tierRates[t] !== undefined ? tierRates[t] : 0.10;
+                validItems.push({
+                  tier: t,
+                  amount: amt,
+                  commissionRate: rate,
+                  commission: +(amt * rate).toFixed(2)
+                });
+              }
+            });
+
+            if (validItems.length === 0) {
+              showToast('⚠️ 請輸入大於 0 的開單金額！');
+              const firstIn = quickAddContainer ? quickAddContainer.querySelector('.dynamic-amt-input') : null;
+              if (firstIn) firstIn.focus();
+              return;
+            }
+
+            const nowParts = getNowParts();
+            const finalDate = activeModalDateStr || nowParts.dateStr;
+            const hVal = (document.getElementById('quickAddHourInput').value || '').trim();
+            const mVal = (document.getElementById('quickAddMinuteInput').value || '').trim();
+            const noteVal = (document.getElementById('quickAddNoteInput').value || '').trim();
+
+            let finalTime = nowParts.timeStr;
+            if (hVal !== '' || mVal !== '') {
+              const nowSub = nowParts.timeStr.split(':');
+              let hh = hVal !== '' ? parseInt(hVal, 10) : parseInt(nowSub[0], 10);
+              let mm = mVal !== '' ? parseInt(mVal, 10) : parseInt(nowSub[1], 10);
+              if (isNaN(hh) || hh < 0) hh = 0;
+              if (hh > 23) hh = 23;
+              if (isNaN(mm) || mm < 0) mm = 0;
+              if (mm > 59) mm = 59;
+              finalTime = `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+            }
+
+            validItems.forEach((item, idx) => {
+              orders.unshift({
+                id: 'ord_' + Date.now() + '_q' + idx + '_' + Math.random().toString(36).slice(2, 6),
+                bookId: activeBookId,
+                note: noteVal,
+                originalAmount: +item.amount.toFixed(2),
+                amount: +item.amount.toFixed(2),
+                tier: item.tier,
+                commissionRate: item.commissionRate,
+                commission: +item.commission.toFixed(2),
+                date: finalDate,
+                time: finalTime,
+                createdAt: new Date().toISOString(),
+                status: 'active',
+                refundEvents: [],
+                receiptPhotos: [...quickAddReceiptPhotos],
+                productPhotos: []
+              });
+            });
+
+            saveOrders();
+            closeQuickAddModal();
+            renderTopBookBar();
+            renderSettingsBookManagement();
+            renderModalDayList();
+            renderCalendar();
+            renderRecentOrders();
+            renderAnalytics();
+            showToast(`✅ 已於 ${finalDate} 新增 ${validItems.length} 筆開單紀錄！`);
+          });
+        }
 
         // Analytics Controls
         document.querySelectorAll('#analyticsScopeSwitch .mode-btn').forEach(btn => {
@@ -4253,35 +5206,15 @@
           renderAnalytics();
         });
 
-        document.getElementById('btnSelectCurrentMonth').addEventListener('click', () => {
-          anaSelectedMonths = new Set([calMonth]);
-          renderAnalytics();
-        });
 
-        document.getElementById('btnSelectH1').addEventListener('click', () => {
-          anaSelectedMonths = new Set([1, 2, 3, 4, 5, 6]);
-          renderAnalytics();
-        });
-
-        document.getElementById('btnSelectH2').addEventListener('click', () => {
-          anaSelectedMonths = new Set([7, 8, 9, 10, 11, 12]);
-          renderAnalytics();
-        });
-
-        document.getElementById('btnSelectAllMonths').addEventListener('click', () => {
-          anaSelectedMonths = new Set([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
-          renderAnalytics();
-        });
 
         // Backup & Sample Data buttons
         document.getElementById('btnExportJson').addEventListener('click', exportJsonBackup);
         document.getElementById('btnExportCsv').addEventListener('click', exportCsvReport);
 
-        // Entry Photo Upload Buttons (Use Live WebRTC Camera for 拍照 buttons!)
+        // Entry Photo Upload Buttons (單據/商品圖片)
         document.getElementById('btnCamReceipt').addEventListener('click', () => openLiveCameraModal('entry-receipt'));
         document.getElementById('btnPickReceipt').addEventListener('click', () => document.getElementById('inputPickReceipt').click());
-        document.getElementById('btnCamProduct').addEventListener('click', () => openLiveCameraModal('entry-product'));
-        document.getElementById('btnPickProduct').addEventListener('click', () => document.getElementById('inputPickProduct').click());
 
         document.getElementById('inputCamReceipt').addEventListener('change', (e) => {
           handleFilesSelected(e.target.files, pendingReceiptPhotos, renderEntryPhotoThumbs);
@@ -4291,20 +5224,23 @@
           handleFilesSelected(e.target.files, pendingReceiptPhotos, renderEntryPhotoThumbs);
           e.target.value = '';
         });
-        document.getElementById('inputCamProduct').addEventListener('change', (e) => {
-          handleFilesSelected(e.target.files, pendingProductPhotos, renderEntryPhotoThumbs);
+
+        // Quick Add Modal Photo Upload Buttons (月曆新增開單小視窗：單據/商品圖片)
+        document.getElementById('btnQuickCamReceipt').addEventListener('click', () => openLiveCameraModal('quick-receipt'));
+        document.getElementById('btnQuickPickReceipt').addEventListener('click', () => document.getElementById('inputQuickPickReceipt').click());
+
+        document.getElementById('inputQuickCamReceipt').addEventListener('change', (e) => {
+          handleFilesSelected(e.target.files, quickAddReceiptPhotos, renderQuickAddPhotoThumbs);
           e.target.value = '';
         });
-        document.getElementById('inputPickProduct').addEventListener('change', (e) => {
-          handleFilesSelected(e.target.files, pendingProductPhotos, renderEntryPhotoThumbs);
+        document.getElementById('inputQuickPickReceipt').addEventListener('change', (e) => {
+          handleFilesSelected(e.target.files, quickAddReceiptPhotos, renderQuickAddPhotoThumbs);
           e.target.value = '';
         });
 
-        // Edit Modal Photo Upload Buttons (Use Live WebRTC Camera for 拍照 buttons!)
+        // Edit Modal Photo Upload Buttons (單據/商品圖片)
         document.getElementById('btnEditCamReceipt').addEventListener('click', () => openLiveCameraModal('edit-receipt'));
         document.getElementById('btnEditPickReceipt').addEventListener('click', () => document.getElementById('inputEditPickReceipt').click());
-        document.getElementById('btnEditCamProduct').addEventListener('click', () => openLiveCameraModal('edit-product'));
-        document.getElementById('btnEditPickProduct').addEventListener('click', () => document.getElementById('inputEditPickProduct').click());
 
         // Live Camera Modal Controls
         document.getElementById('btnCloseCameraModal').addEventListener('click', closeLiveCameraModal);
@@ -4318,9 +5254,8 @@
           const target = currentCameraTarget;
           closeLiveCameraModal();
           if (target === 'entry-receipt') document.getElementById('inputCamReceipt').click();
-          else if (target === 'entry-product') document.getElementById('inputCamProduct').click();
+          else if (target === 'quick-receipt') document.getElementById('inputQuickCamReceipt').click();
           else if (target === 'edit-receipt') document.getElementById('inputEditCamReceipt').click();
-          else if (target === 'edit-product') document.getElementById('inputEditCamProduct').click();
         });
         document.getElementById('btnSimulateCameraShot').addEventListener('click', () => {
           const isReceipt = currentCameraTarget && currentCameraTarget.includes('receipt');
@@ -4341,14 +5276,7 @@
           handleFilesSelected(e.target.files, editReceiptPhotos, renderEditPhotoThumbs);
           e.target.value = '';
         });
-        document.getElementById('inputEditCamProduct').addEventListener('change', (e) => {
-          handleFilesSelected(e.target.files, editProductPhotos, renderEditPhotoThumbs);
-          e.target.value = '';
-        });
-        document.getElementById('inputEditPickProduct').addEventListener('change', (e) => {
-          handleFilesSelected(e.target.files, editProductPhotos, renderEditPhotoThumbs);
-          e.target.value = '';
-        });
+
 
         // Global Lightbox click delegation
         document.body.addEventListener('click', (e) => {
@@ -4509,12 +5437,14 @@
       // ==================== INITIALIZE APP ====================
             loadSecurityConfig();
       applyLockScreenState();
-      initFirebaseServices();
-      loadCustomRates();
+      loadBooksConfig();
       loadOrders();
+      initFirebaseServices();
       loadBackupSnapshots();
       initYearMonthSelects();
       updateAllRateLabelsInUI();
+      renderTopBookBar();
+      renderSettingsBookManagement();
       bindEvents();
       bindAuthEvents();
       updateLiveClock();

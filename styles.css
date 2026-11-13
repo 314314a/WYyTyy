@@ -202,7 +202,250 @@
       font-weight: 600;
     }
 
-    /* Navigation Tabs */
+    /* Dynamic Entry Rows (Amount + Tier Select on same row) */
+    .dynamic-entry-row {
+      background: #fafbfa;
+      border: 1.5px solid var(--border);
+      border-left: 4px solid var(--primary);
+      border-radius: 10px;
+      padding: 10px 12px;
+      margin-bottom: 10px;
+      transition: all 0.15s;
+    }
+    .dynamic-entry-row-main {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      width: 100%;
+    }
+    .dynamic-entry-row-main .dynamic-amt-input {
+      flex: 1.1;
+      min-width: 0;
+      font-size: clamp(0.72rem, 3vw, 0.94rem) !important;
+      padding: 10px 6px !important;
+    }
+    .dynamic-entry-row-main .dynamic-amt-input::placeholder {
+      font-size: clamp(0.62rem, 2.5vw, 0.86rem);
+    }
+    .dynamic-entry-row-main .dynamic-tier-select {
+      flex: 0 0 auto;
+      width: auto !important;
+      min-width: 102px;
+      max-width: 54%;
+      padding: 10px 2px 10px 6px !important;
+      font-size: clamp(0.68rem, 2.75vw, 0.88rem) !important;
+      font-weight: 700;
+      color: var(--primary);
+      white-space: nowrap;
+    }
+    /* Fix #editOrderPanel overflow (修正修改開單輸入欄穿圖) */
+    #editOrderPanel,
+    #editOrderPanel .form-group,
+    #editOrderPanel .input-text,
+    #editOrderPanel .input-select {
+      min-width: 0 !important;
+      max-width: 100% !important;
+      box-sizing: border-box !important;
+    }
+    #editOrderPanel .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+      gap: 8px !important;
+    }
+    #editOrderPanel .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+      gap: 8px !important;
+    }
+    @media (max-width: 420px) {
+      #editOrderPanel .grid-2 {
+        grid-template-columns: minmax(0, 1fr) !important;
+      }
+    }
+    /* Fix Settings Rates Card Input Overflow (修正輸入欄過長穿圖) */
+    .tier-box {
+      min-width: 0;
+      max-width: 100%;
+      box-sizing: border-box;
+      overflow: hidden;
+    }
+    .tier-box .input-text {
+      min-width: 0;
+      width: 100%;
+      max-width: 100%;
+      box-sizing: border-box;
+    }
+    #settingsPanel-rates .grid-2 {
+      grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+      gap: 10px !important;
+    }
+    @media (max-width: 420px) {
+      #settingsPanel-rates .grid-2 {
+        grid-template-columns: minmax(0, 1fr) !important;
+      }
+    }
+    .dynamic-row-remove-btn {
+      appearance: none;
+      border: 1px solid #fecaca;
+      background: var(--danger-bg);
+      color: var(--danger);
+      width: 36px;
+      height: 38px;
+      border-radius: 8px;
+      font-size: 1rem;
+      font-weight: 800;
+      cursor: pointer;
+      flex-shrink: 0;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .dynamic-row-comm-line {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.78rem;
+      color: var(--text-muted);
+      margin-top: 6px;
+      padding-top: 4px;
+      border-top: 1px dashed var(--border);
+    }
+
+    /* Fix Long Note Text Overflow (修正備註過長穿圖問題) */
+    .order-item-card, .order-item-left, #selectedOrderInfoCard {
+      min-width: 0;
+      max-width: 100%;
+      box-sizing: border-box;
+      overflow: hidden;
+    }
+    .order-note-box {
+      width: 100%;
+      max-width: 100%;
+      box-sizing: border-box;
+      font-size: 0.8rem;
+      color: var(--primary);
+      background: var(--primary-light);
+      padding: 5px 8px;
+      border-radius: 6px;
+      margin-top: 4px;
+      word-break: break-all;
+      overflow-wrap: anywhere;
+      white-space: pre-wrap;
+      line-height: 1.4;
+    }
+
+    /* Single-Row 4 Action Choice Buttons inside Day Detail Modal */
+    #actionChoiceButtons {
+      display: grid !important;
+      grid-template-columns: 1.25fr 1fr 0.85fr 0.85fr !important;
+      gap: 6px !important;
+      margin-bottom: 10px;
+      width: 100%;
+      box-sizing: border-box;
+    }
+    #actionChoiceButtons .btn {
+      padding: 9px 4px !important;
+      font-size: clamp(0.62rem, 2.35vw, 0.86rem) !important;
+      white-space: nowrap !important;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      min-width: 0;
+      width: 100%;
+      gap: 2px !important;
+      justify-content: center;
+    }
+
+    /* Responsive Analytics Scope Switch */
+    #analyticsScopeSwitch {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 4px;
+      width: 100%;
+      max-width: 360px;
+    }
+    #analyticsScopeSwitch .mode-btn {
+      font-size: clamp(0.72rem, 2.6vw, 0.86rem);
+      padding: 7px 6px;
+      white-space: nowrap;
+      text-align: center;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* Settings Clean Menu List Items (登入/設定 清單式選單) */
+    .settings-menu-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .settings-menu-item {
+      appearance: none;
+      width: 100%;
+      text-align: left;
+      background: #ffffff;
+      border: 1.5px solid var(--border);
+      border-radius: 12px;
+      padding: 14px 16px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      transition: all 0.15s ease;
+      box-shadow: 0 2px 6px rgba(20, 40, 32, 0.03);
+    }
+    .settings-menu-item:hover {
+      border-color: var(--primary);
+      background: #f4faf7;
+      transform: translateY(-1px);
+    }
+    .settings-menu-item-left {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-width: 0;
+    }
+    .settings-menu-icon {
+      width: 40px;
+      height: 40px;
+      border-radius: 10px;
+      background: var(--primary-light);
+      color: var(--primary);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.2rem;
+      flex-shrink: 0;
+    }
+    .settings-menu-title {
+      font-size: 0.96rem;
+      font-weight: 800;
+      color: var(--text-main);
+      display: block;
+    }
+    .settings-menu-sub {
+      font-size: 0.76rem;
+      color: var(--text-muted);
+      display: block;
+      margin-top: 2px;
+    }
+    .settings-menu-arrow {
+      font-size: 1.1rem;
+      font-weight: 800;
+      color: var(--text-muted);
+      flex-shrink: 0;
+    }
+    .settings-detail-panel {
+      display: none;
+    }
+    .settings-detail-panel.open {
+      display: block;
+    }
+    .settings-back-bar {
+      margin-bottom: 10px;
+    }
+
+    /* Navigation Tabs & Upper Ledger Book Bar */
     .nav-bar {
       background: var(--bg-card);
       border-bottom: 1px solid var(--border);
@@ -211,13 +454,75 @@
       z-index: 35;
     }
 
+    .book-bar-wrap {
+      background: #f1f6f3;
+      border-bottom: 1px solid var(--border);
+      padding: 6px 10px;
+    }
+
+    .book-bar-inner {
+      max-width: 1120px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      overflow-x: auto;
+      scrollbar-width: none;
+      -ms-overflow-style: none;
+    }
+    .book-bar-inner::-webkit-scrollbar {
+      display: none;
+    }
+
+    .book-tab-btn {
+      appearance: none;
+      border: 1.5px solid #cbdcd3;
+      background: #ffffff;
+      color: var(--text-main);
+      font-size: clamp(0.76rem, 2.6vw, 0.85rem);
+      font-weight: 700;
+      padding: 5px 12px;
+      border-radius: 99px;
+      cursor: pointer;
+      white-space: nowrap;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      transition: all 0.15s ease;
+      flex-shrink: 0;
+    }
+
+    .book-tab-btn.active {
+      background: var(--primary);
+      color: #ffffff;
+      border-color: var(--primary);
+      box-shadow: 0 2px 5px rgba(30, 70, 58, 0.22);
+    }
+
+    .book-add-btn {
+      appearance: none;
+      border: 1.5px dashed var(--accent-gold);
+      background: #fffdf9;
+      color: #8c621c;
+      font-size: clamp(0.75rem, 2.5vw, 0.82rem);
+      font-weight: 700;
+      padding: 5px 11px;
+      border-radius: 99px;
+      cursor: pointer;
+      white-space: nowrap;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      flex-shrink: 0;
+    }
+
     .nav-inner {
       max-width: 1120px;
       margin: 0 auto;
       display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 4px;
-      padding: 6px 12px;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 6px;
+      padding: 6px 10px;
     }
 
     .nav-btn {
@@ -225,16 +530,34 @@
       border: none;
       background: transparent;
       color: var(--text-muted);
-      font-size: 0.9rem;
-      font-weight: 600;
-      padding: 10px 8px;
-      border-radius: 8px;
+      padding: 7px 4px;
+      border-radius: 10px;
       cursor: pointer;
       display: flex;
+      flex-direction: column;
       align-items: center;
       justify-content: center;
-      gap: 6px;
+      gap: 3px;
+      min-width: 0;
+      width: 100%;
       transition: all 0.18s ease;
+    }
+
+    .nav-btn-icon {
+      font-size: clamp(1.05rem, 3.8vw, 1.25rem);
+      line-height: 1.1;
+      display: block;
+    }
+
+    .nav-btn-text {
+      font-size: clamp(0.68rem, 2.8vw, 0.88rem);
+      font-weight: 700;
+      line-height: 1.2;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 100%;
+      display: block;
     }
 
     .nav-btn:hover {
@@ -838,7 +1161,9 @@
 
     .cal-weekdays {
       display: grid;
-      grid-template-columns: repeat(7, 1fr);
+      grid-template-columns: repeat(7, minmax(0, 1fr));
+      width: 100%;
+      box-sizing: border-box;
       text-align: center;
       font-weight: 700;
       font-size: 0.8rem;
@@ -855,7 +1180,9 @@
 
     .cal-grid {
       display: grid;
-      grid-template-columns: repeat(7, 1fr);
+      grid-template-columns: repeat(7, minmax(0, 1fr));
+      width: 100%;
+      box-sizing: border-box;
       border-left: 1px solid var(--border);
       border-top: 1px solid var(--border);
       background: #fff;
@@ -864,10 +1191,14 @@
     }
 
     .cal-cell {
-      min-height: 92px;
+      min-height: 90px;
+      min-width: 0;
+      max-width: 100%;
+      box-sizing: border-box;
+      overflow: hidden;
       border-right: 1px solid var(--border);
       border-bottom: 1px solid var(--border);
-      padding: 6px;
+      padding: 5px 4px;
       display: flex;
       flex-direction: column;
       justify-content: space-between;
@@ -903,13 +1234,17 @@
       display: flex;
       justify-content: space-between;
       align-items: center;
+      gap: 2px;
+      min-width: 0;
+      width: 100%;
     }
 
     .cal-day-num {
-      font-size: 0.85rem;
+      font-size: clamp(0.72rem, 2.3vw, 0.84rem);
       font-weight: 700;
-      width: 24px;
-      height: 24px;
+      width: 21px;
+      height: 21px;
+      flex-shrink: 0;
       border-radius: 50%;
       display: inline-flex;
       align-items: center;
@@ -922,41 +1257,61 @@
     }
 
     .cal-count-pill {
-      font-size: 0.68rem;
+      font-size: clamp(0.55rem, 1.8vw, 0.66rem);
       background: var(--primary-light);
       color: var(--primary);
-      padding: 1px 5px;
+      padding: 1px 4px;
       border-radius: 99px;
       font-weight: 700;
+      white-space: nowrap;
+      flex-shrink: 0;
+      line-height: 1.15;
     }
 
     .cal-day-Data {
       margin-top: 4px;
       text-align: right;
+      min-width: 0;
+      width: 100%;
+      overflow: hidden;
     }
 
     .cal-amt {
-      font-size: 0.82rem;
+      font-size: clamp(0.56rem, 2.15vw, 0.8rem);
       font-weight: 800;
       color: var(--primary);
-      word-break: break-all;
-      line-height: 1.2;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      letter-spacing: -0.3px;
+      line-height: 1.25;
+      font-variant-numeric: tabular-nums;
     }
 
     .cal-comm {
-      font-size: 0.7rem;
+      font-size: clamp(0.52rem, 1.85vw, 0.68rem);
       color: var(--accent-gold);
-      font-weight: 600;
+      font-weight: 700;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      letter-spacing: -0.3px;
+      line-height: 1.2;
+      font-variant-numeric: tabular-nums;
     }
 
     .cal-refund-tag {
-      font-size: 0.65rem;
+      font-size: clamp(0.5rem, 1.7vw, 0.62rem);
       color: var(--danger);
       background: var(--danger-bg);
-      padding: 0 4px;
+      padding: 0 3px;
       border-radius: 4px;
       display: inline-block;
-      margin-top: 2px;
+      margin-top: 1px;
+      white-space: nowrap;
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
 
     .cal-partial-tag {
@@ -973,14 +1328,12 @@
 
     @media (max-width: 600px) {
       .cal-cell {
-        min-height: 74px;
-        padding: 4px;
+        min-height: 76px;
+        padding: 4px 2.5px;
       }
-      .cal-amt {
-        font-size: 0.72rem;
-      }
-      .cal-comm {
-        font-size: 0.62rem;
+      .cal-day-num {
+        width: 19px;
+        height: 19px;
       }
     }
 
